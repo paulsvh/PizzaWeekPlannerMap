@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Drawer } from 'vaul';
 import type { Restaurant } from '@/lib/types';
 import type { PlotStatus, PlotResult } from '@/lib/maps/use-plot-route';
@@ -195,6 +196,11 @@ type ReadyContentProps = {
   onExit: () => void;
 };
 
+type SaveState =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'error'; message: string };
+
 function ReadyContent({
   result,
   stops,
@@ -205,8 +211,50 @@ function ReadyContent({
   onResetOrder,
   onExit,
 }: ReadyContentProps) {
+  const router = useRouter();
+  const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
   const miles = result.totalDistanceMeters / 1609.344;
   const durationText = formatDuration(result.totalDurationSeconds);
+
+  const canSave = !isRecomputing && saveState.kind !== 'saving';
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaveState({ kind: 'saving' });
+    try {
+      const res = await fetch('/api/routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stopRestaurantIds: result.orderedStops.map((s) => s.id),
+          originLat: result.origin.lat,
+          originLng: result.origin.lng,
+          encodedPolyline: result.encodedPolyline,
+          totalDistanceMeters: result.totalDistanceMeters,
+          totalDurationSeconds: result.totalDurationSeconds,
+          legDistancesMeters: result.legDistancesMeters,
+          legDurationsSeconds: result.legDurationsSeconds,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+
+      const data = (await res.json()) as { routeId: string };
+      // Navigate to the detail page. The drawer will unmount on the
+      // next render as the page transitions.
+      router.push(`/routes/${data.routeId}`);
+    } catch (err) {
+      setSaveState({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Save failed.',
+      });
+    }
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-1 flex-col overflow-y-auto">
@@ -318,19 +366,41 @@ function ReadyContent({
           className="animate-rise flex flex-col gap-3"
           style={{ animationDelay: '520ms' }}
         >
+          {saveState.kind === 'error' && (
+            <div
+              role="alert"
+              className="flex items-start gap-3 border-l-[3px] border-sauce bg-sauce/5 py-1 pl-3"
+            >
+              <span className="font-mono text-[10px] font-bold tracking-[0.25em] text-sauce uppercase">
+                Stop&mdash;
+              </span>
+              <p className="font-display text-sm text-ink">
+                {saveState.message}
+              </p>
+            </div>
+          )}
+
           <button
             type="button"
-            disabled
-            aria-disabled
-            title="Saving routes lands in Phase 6"
-            className="font-mono relative flex cursor-not-allowed items-center justify-between border-2 border-dashed border-ink-faded bg-cream-deep/40 px-5 py-4 text-sm font-bold tracking-[0.18em] text-ink-faded uppercase sm:text-base"
+            onClick={handleSave}
+            disabled={!canSave}
+            aria-disabled={!canSave}
+            className="group font-mono flex items-center justify-between border-2 border-ink bg-ink px-5 py-4 text-sm font-bold tracking-[0.18em] text-cream uppercase transition-colors hover:border-sauce hover:bg-sauce focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce disabled:cursor-wait disabled:opacity-60 sm:text-base"
           >
-            <span>Save Route</span>
+            <span>
+              {saveState.kind === 'saving'
+                ? 'Saving\u2026'
+                : isRecomputing
+                  ? 'Recomputing\u2026'
+                  : 'Save Route'}
+            </span>
             <span
               aria-hidden
-              className="font-mono text-[9px] tracking-[0.2em] text-ink-faded/80"
+              className="transition-transform group-hover:translate-x-1 group-disabled:translate-x-0"
             >
-              Phase 6
+              {saveState.kind === 'saving' || isRecomputing
+                ? '\u22EF'
+                : '\u2192'}
             </span>
           </button>
 
@@ -404,8 +474,15 @@ function StopCard({
   const isFirst = index === 0;
   const isLast = index === totalStops - 1;
 
+  // Stop 01 is the anchor — route starts AND ends there. Show a
+  // thin sauce-red start border on the left edge so it's visually
+  // distinct from the rest of the stops as the user reorders.
   return (
-    <li className="flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5">
+    <li
+      className={`flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5 ${
+        isFirst ? 'border-l-[5px] border-l-sauce' : ''
+      }`}
+    >
       <span
         aria-hidden
         className="font-mono flex shrink-0 items-start bg-ink px-2 py-1 text-[11px] font-bold tracking-[0.1em] text-cream"
@@ -413,6 +490,12 @@ function StopCard({
         {String(index + 1).padStart(2, '0')}
       </span>
       <div className="min-w-0 flex-1 self-center">
+        {isFirst && (
+          <p className="font-mono mb-0.5 flex items-center gap-1 text-[8px] font-bold tracking-[0.22em] text-sauce uppercase">
+            <span aria-hidden>&#x2605;</span>
+            <span>Start &middot; End</span>
+          </p>
+        )}
         <p className="font-display text-[15px] leading-tight font-bold text-ink sm:text-base">
           {stop.pizzaName}
         </p>
@@ -478,15 +561,7 @@ function getNoticeCopy(
         dateline: 'Route Dispatch · Over Capacity',
         titleTop: 'Too Many',
         titleItalic: 'Stops',
-        body: `Google Directions caps routes at ${MAX_WAYPOINTS} stops per request. You have ${starredCount} starred. Unstar a few and we\u2019ll try again.`,
-        footnote: null,
-      };
-    case 'needs-origin':
-      return {
-        dateline: 'Route Dispatch · Locating',
-        titleTop: 'Finding',
-        titleItalic: 'You',
-        body: 'Requesting your location so we can start the route from where you are standing. Allow the browser prompt, or we\u2019ll fall back to the first starred stop.',
+        body: `Google Directions caps routes at ${MAX_WAYPOINTS + 1} stops per request (one anchor plus ${MAX_WAYPOINTS} more). You have ${starredCount} starred. Unstar a few and we\u2019ll try again.`,
         footnote: null,
       };
     case 'loading':

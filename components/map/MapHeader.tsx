@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 
 type MapHeaderProps = { displayName: string };
@@ -27,16 +28,23 @@ export function MapHeader({ displayName }: MapHeaderProps) {
           </div>
         </div>
 
-        {/* Right side: reader identity + sign out */}
-        <div className="flex items-center gap-3 sm:gap-4">
+        {/* Right side: reader identity + routes link + sign out */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="hidden flex-col items-end gap-0.5 sm:flex">
             <div className="font-mono text-[8px] tracking-[0.22em] text-ink-soft uppercase">
               Reader
             </div>
-            <div className="font-display max-w-[160px] truncate text-sm font-bold text-ink">
+            <div className="font-display max-w-[140px] truncate text-sm font-bold text-ink">
               {displayName}
             </div>
           </div>
+
+          <Link
+            href="/routes"
+            className="font-mono border-2 border-ink bg-cream px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:border-mustard hover:bg-mustard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2 sm:text-[11px]"
+          >
+            Routes
+          </Link>
 
           <form action={logout}>
             <button

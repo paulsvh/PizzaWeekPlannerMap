@@ -15,7 +15,6 @@ import { RoutePolyline } from '@/components/map/RoutePolyline';
 import { RestaurantSheet } from '@/components/sheets/RestaurantSheet';
 import { PlotModeSheet } from '@/components/sheets/PlotModeSheet';
 import { StarsProvider, useStars } from '@/components/context/StarsProvider';
-import { useGeolocation } from '@/lib/maps/use-geolocation';
 import { usePlotRoute } from '@/lib/maps/use-plot-route';
 
 type MapViewProps = {
@@ -94,19 +93,15 @@ function MapViewInner({
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [plotMode, setPlotMode] = useState(false);
   /**
-   * User's custom stop order. Null means "use Google's optimization".
-   * When the user clicks an up/down arrow in the plot sheet, we seed
-   * this from the current result and then apply the swap. Subsequent
+   * User's custom stop order. Null means "use Google's optimization
+   * with the first starred restaurant as the fixed anchor". When the
+   * user clicks an up/down arrow in the plot sheet, we seed this
+   * from the current result and then apply the swap. Subsequent
    * starring/unstarring prunes and extends the manual order in-place.
    */
   const [manualOrder, setManualOrder] = useState<Restaurant[] | null>(null);
   const { starred, isStarred } = useStars();
   const bounds = useMemo(() => computeBounds(restaurants), [restaurants]);
-
-  // Geolocation — requested lazily when plot mode activates, then
-  // reused for subsequent recomputations.
-  const { coords: geoCoords, status: geoStatus, request: requestGeo } =
-    useGeolocation();
 
   // Derive the ordered list of starred restaurants (stable order by
   // restaurant array index) for the plot route call.
@@ -115,42 +110,20 @@ function MapViewInner({
     [restaurants, starred],
   );
 
-  // Origin: user's GPS if granted; else fall back to the first
-  // starred restaurant's coordinates. If no stars yet, origin is null
-  // and usePlotRoute returns 'too-few' anyway.
-  const origin = useMemo<google.maps.LatLngLiteral | null>(() => {
-    if (geoStatus === 'granted' && geoCoords) return geoCoords;
-    if (
-      (geoStatus === 'denied' ||
-        geoStatus === 'unavailable' ||
-        geoStatus === 'timeout') &&
-      starredRestaurants.length > 0
-    ) {
-      return { lat: starredRestaurants[0].lat, lng: starredRestaurants[0].lng };
-    }
-    return null;
-  }, [geoStatus, geoCoords, starredRestaurants]);
-
   // The actual waypoints we hand to the Directions hook: the user's
-  // custom order when they've set one, otherwise the raw starred set
-  // (and we ask Google to optimize).
+  // custom order when they've set one, otherwise the raw starred
+  // set. In both cases, waypoints[0] is the anchor — usePlotRoute
+  // uses it as origin + destination and optimizes the middle stops
+  // (when `optimize: true`). No geolocation involved — the route
+  // always starts and ends at the first stop in the list.
   const waypointsForRoute = manualOrder ?? starredRestaurants;
 
   const { status: plotStatus, result: plotResult, error: plotError } =
     usePlotRoute({
       enabled: plotMode,
-      origin,
       waypoints: waypointsForRoute,
       optimize: manualOrder === null,
     });
-
-  // When plot mode activates, kick off a geolocation request (unless
-  // we already have coords from a previous attempt in this session).
-  useEffect(() => {
-    if (plotMode && geoStatus === 'idle') {
-      requestGeo();
-    }
-  }, [plotMode, geoStatus, requestGeo]);
 
   // Exiting plot mode wipes any manual ordering the user had —
   // re-entering starts fresh with Google's optimization.
