@@ -2,93 +2,95 @@
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { timingSafeEqual } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
-import { env } from '@/lib/env';
 import { getDb } from '@/lib/firebase/admin';
 import { createSession, deleteSession } from '@/lib/auth/session';
+import { verifyPassword } from '@/lib/auth/password';
+import type { UserRole } from '@/lib/types';
 
 /**
- * Login Server Action.
+ * Login Server Action — email + password flow.
  *
- * Flow:
- *   1. Validate passcode + display name with zod.
- *   2. Constant-time compare passcode against APP_PASSCODE env var.
- *   3. Look up (or create) a user doc in Firestore keyed by display name
- *      within the shared-passcode group — so friends get their stars/routes
- *      back when they log in from a new device.
- *   4. Sign a JWT and set the session cookie.
- *   5. Redirect to `/`.
+ * Looks up the user by a lowercased email (stored as `emailLower` on
+ * the user doc), verifies the password hash with argon2id, updates
+ * lastLoginAt, and signs a JWT session. Generic "invalid credentials"
+ * errors for both missing-email and wrong-password cases so attackers
+ * can't enumerate valid emails.
  */
 
 const LoginSchema = z.object({
-  passcode: z.string().min(1, { message: 'Passcode is required.' }),
-  displayName: z
+  email: z
     .string()
     .trim()
-    .min(1, { message: 'Display name is required.' })
-    .max(40, { message: 'Display name must be 40 characters or less.' }),
+    .toLowerCase()
+    .email({ error: 'Enter a valid email address.' }),
+  password: z.string().min(1, { message: 'Password is required.' }),
 });
 
-export type LoginState = {
-  errors?: {
-    passcode?: string[];
-    displayName?: string[];
-    form?: string[];
-  };
-} | undefined;
+export type LoginState =
+  | {
+      errors?: {
+        email?: string[];
+        password?: string[];
+        form?: string[];
+      };
+    }
+  | undefined;
 
-function constantTimeEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a, 'utf8');
-  const bBuf = Buffer.from(b, 'utf8');
-  if (aBuf.length !== bBuf.length) {
-    // Still do a dummy compare to reduce timing leaks on length.
-    timingSafeEqual(aBuf, aBuf);
-    return false;
-  }
-  return timingSafeEqual(aBuf, bBuf);
-}
-
-export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
+export async function login(
+  _prev: LoginState,
+  formData: FormData,
+): Promise<LoginState> {
   const parsed = LoginSchema.safeParse({
-    passcode: formData.get('passcode'),
-    displayName: formData.get('displayName'),
+    email: formData.get('email'),
+    password: formData.get('password'),
   });
 
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors };
   }
 
-  const { passcode, displayName } = parsed.data;
+  const { email, password } = parsed.data;
 
-  if (!constantTimeEqual(passcode, env.appPasscode)) {
-    return { errors: { form: ['Incorrect passcode.'] } };
-  }
-
-  // Look up an existing user by display name (case-insensitive) or create one.
   let userId: string;
+  let displayName: string;
+  let role: UserRole;
+
   try {
     const db = getDb();
-    const normalized = displayName.toLowerCase();
-    const existing = await db
+    const snap = await db
       .collection('users')
-      .where('displayNameLower', '==', normalized)
+      .where('emailLower', '==', email)
       .limit(1)
       .get();
 
-    if (!existing.empty) {
-      userId = existing.docs[0].id;
-    } else {
-      const newDoc = db.collection('users').doc();
-      await newDoc.set({
-        displayName,
-        displayNameLower: normalized,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-      userId = newDoc.id;
+    if (snap.empty) {
+      // Deliberately vague — don't leak whether the email exists.
+      return { errors: { form: ['Incorrect email or password.'] } };
     }
+
+    const doc = snap.docs[0];
+    const data = doc.data();
+
+    if (typeof data.passwordHash !== 'string' || data.passwordHash.length === 0) {
+      return { errors: { form: ['This account has no password set. Ask an admin to re-invite you.'] } };
+    }
+
+    const valid = await verifyPassword(password, data.passwordHash);
+    if (!valid) {
+      return { errors: { form: ['Incorrect email or password.'] } };
+    }
+
+    userId = doc.id;
+    displayName = data.displayName ?? email;
+    role = data.role === 'admin' ? 'admin' : 'user';
+
+    // Stamp lastLoginAt — fire-and-forget, don't block the login flow.
+    doc.ref.set({ lastLoginAt: FieldValue.serverTimestamp() }, { merge: true }).catch((err) => {
+      console.error('[login] failed to update lastLoginAt:', err);
+    });
   } catch (err) {
-    console.error('login: firestore error', err);
+    console.error('[login] firestore error:', err);
     return {
       errors: {
         form: ['Could not reach the database. Check Firebase config and try again.'],
@@ -96,7 +98,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     };
   }
 
-  await createSession(userId, displayName);
+  await createSession(userId, displayName, role);
   redirect('/');
 }
 

@@ -1,6 +1,6 @@
 /**
  * Shared types used across server and client code.
- * These mirror the Firestore document shapes (see plan for the data model).
+ * These mirror the Firestore document shapes.
  *
  * The Zod schemas in scripts/restaurant-schema.ts are the source of truth
  * for Restaurant at the scraping/seeding boundary — keep the two in sync.
@@ -31,14 +31,37 @@ export type Restaurant = {
   googlePlaceId: string | null;
 };
 
+export type UserRole = 'user' | 'admin';
+
 export type User = {
   id: string;
+  email: string;
   displayName: string;
+  role: UserRole;
+  // Timestamps as millis for client-serializable shapes. Server-side
+  // Firestore docs may store as Timestamp objects — convert at the
+  // read boundary.
+  createdAt: number;
+  claimedAt: number | null;
+  lastLoginAt: number | null;
+};
+
+export type Invite = {
+  id: string; // Firestore doc ID = SHA-256(token) base64url
+  email: string;
+  createdByUserId: string;
+  createdByDisplayName: string;
+  createdAt: number;
+  expiresAt: number;
+  // Null while unclaimed; set when a user successfully claims the invite.
+  claimedAt: number | null;
+  claimedByUserId: string | null;
 };
 
 export type SessionPayload = {
   userId: string;
   displayName: string;
+  role: UserRole;
   // jose sets iat/exp automatically, but we include expiresAt for cookie expiry sync
   expiresAt: number;
 };

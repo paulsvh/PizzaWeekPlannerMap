@@ -8,8 +8,8 @@ const initialState: LoginState = undefined;
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(login, initialState);
 
-  const displayNameError = state?.errors?.displayName?.[0];
-  const passcodeError = state?.errors?.passcode?.[0];
+  const emailError = state?.errors?.email?.[0];
+  const passwordError = state?.errors?.password?.[0];
   const formError = state?.errors?.form?.[0];
 
   return (
@@ -94,8 +94,12 @@ export default function LoginPage() {
           </div>
           <p className="font-display text-base leading-relaxed text-ink-soft sm:text-[17px]">
             The planning desk for the 2026 Portland Pizza Week crawl. Your editors
-            have plotted the pies, measured the miles, and worn the grease. To
-            proceed, you&rsquo;ll need a passcode and a name to run under.
+            have plotted the pies, measured the miles, and worn the grease. Sign
+            in with the email your admin invited and the password you set on
+            claim. No invite yet?{' '}
+            <span className="font-mono text-[11px] tracking-[0.15em] uppercase text-sauce">
+              Ask the editor in chief.
+            </span>
           </p>
         </section>
 
@@ -118,78 +122,73 @@ export default function LoginPage() {
             </span>
           </div>
 
-          {/* Field 01 — Display name */}
+          {/* Field 01 — Email */}
           <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="displayName"
-              className="flex items-baseline gap-2"
-            >
+            <label htmlFor="email" className="flex items-baseline gap-2">
               <span className="font-mono text-[10px] font-bold tracking-[0.2em] text-sauce uppercase">
                 01
               </span>
               <span className="font-mono text-[10px] tracking-[0.2em] text-ink-soft uppercase">
-                Name on the record
+                Email address
               </span>
             </label>
             <input
-              id="displayName"
-              name="displayName"
-              type="text"
+              id="email"
+              name="email"
+              type="email"
               required
-              maxLength={40}
-              autoComplete="off"
-              autoCapitalize="words"
+              autoComplete="email"
+              autoCapitalize="none"
               spellCheck={false}
-              aria-invalid={!!displayNameError}
-              aria-describedby={
-                displayNameError ? 'displayName-error' : undefined
-              }
-              placeholder="e.g. Marco"
+              inputMode="email"
+              aria-invalid={!!emailError}
+              aria-describedby={emailError ? 'email-error' : undefined}
+              placeholder="reader@paper.com"
               className="font-display w-full border-0 border-b-2 border-ink bg-transparent pt-1 pb-1 text-xl text-ink placeholder:text-ink-faded/60 focus:border-b-[3px] focus:border-sauce focus:outline-none aria-[invalid=true]:border-sauce sm:text-2xl"
             />
-            {displayNameError && (
+            {emailError && (
               <p
-                id="displayName-error"
+                id="email-error"
                 className="font-mono text-[11px] tracking-wider text-sauce uppercase"
               >
-                &rarr; {displayNameError}
+                &rarr; {emailError}
               </p>
             )}
           </div>
 
-          {/* Field 02 — Passcode */}
+          {/* Field 02 — Password */}
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="passcode" className="flex items-baseline gap-2">
+            <label htmlFor="password" className="flex items-baseline gap-2">
               <span className="font-mono text-[10px] font-bold tracking-[0.2em] text-sauce uppercase">
                 02
               </span>
               <span className="font-mono text-[10px] tracking-[0.2em] text-ink-soft uppercase">
-                Shared passcode
+                Password
               </span>
             </label>
             <input
-              id="passcode"
-              name="passcode"
+              id="password"
+              name="password"
               type="password"
               required
               autoComplete="current-password"
-              aria-invalid={!!passcodeError || !!formError}
+              aria-invalid={!!passwordError || !!formError}
               aria-describedby={
-                passcodeError
-                  ? 'passcode-error'
+                passwordError
+                  ? 'password-error'
                   : formError
                     ? 'form-error'
                     : undefined
               }
-              placeholder="&bull;&bull;&bull;&bull;&bull;&bull;"
+              placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
               className="font-mono w-full border-0 border-b-2 border-ink bg-transparent pt-1 pb-1 text-xl tracking-[0.3em] text-ink placeholder:text-ink-faded/50 focus:border-b-[3px] focus:border-sauce focus:outline-none aria-[invalid=true]:border-sauce sm:text-2xl"
             />
-            {passcodeError && (
+            {passwordError && (
               <p
-                id="passcode-error"
+                id="password-error"
                 className="font-mono text-[11px] tracking-wider text-sauce uppercase"
               >
-                &rarr; {passcodeError}
+                &rarr; {passwordError}
               </p>
             )}
           </div>

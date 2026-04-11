@@ -17,6 +17,7 @@
   --color-sauce: #b32113;
   --color-sauce-dark: #7c1308;
   --color-mustard: #b68a2e;
+  --color-basil: #4d5b2a; /* used for vegan chip — dark olive-green */
   --color-rule: #cbbf9f;
 
   /* Fonts */
@@ -102,6 +103,18 @@ body {
   }
 }
 
+@keyframes markerPop {
+  0% {
+    transform: scale(0.82);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .animate-rise {
   animation: rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -119,6 +132,10 @@ body {
   animation: shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
 }
 
+.animate-marker-pop {
+  animation: markerPop 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 /* Give inputs a newsprint cursor caret */
 input {
   caret-color: var(--color-sauce);
@@ -129,7 +146,8 @@ input {
   .animate-rise,
   .animate-slash,
   .animate-stamp,
-  .animate-shake {
+  .animate-shake,
+  .animate-marker-pop {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

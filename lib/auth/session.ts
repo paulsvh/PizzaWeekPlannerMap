@@ -2,11 +2,17 @@ import 'server-only';
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 import { cookies } from 'next/headers';
 import { env } from '@/lib/env';
-import type { SessionPayload } from '@/lib/types';
+import type { SessionPayload, UserRole } from '@/lib/types';
 
 /**
  * Stateless session management using a jose-signed JWT stored in an
  * HttpOnly cookie. Follows the Next.js 16 `cookies()` async API.
+ *
+ * The payload carries userId + displayName + role so server pages
+ * and actions can make authorization decisions without re-fetching
+ * the user doc on every request. The role is cryptographically
+ * sealed in the JWT — a user can't promote themselves to admin by
+ * fiddling with cookies.
  */
 
 const COOKIE_NAME = 'pw_session';
@@ -33,13 +39,15 @@ export async function decrypt(token: string | undefined): Promise<SessionPayload
     if (
       typeof payload.userId !== 'string' ||
       typeof payload.displayName !== 'string' ||
-      typeof payload.expiresAt !== 'number'
+      typeof payload.expiresAt !== 'number' ||
+      (payload.role !== 'user' && payload.role !== 'admin')
     ) {
       return null;
     }
     return {
       userId: payload.userId,
       displayName: payload.displayName,
+      role: payload.role as UserRole,
       expiresAt: payload.expiresAt,
     };
   } catch {
@@ -47,9 +55,13 @@ export async function decrypt(token: string | undefined): Promise<SessionPayload
   }
 }
 
-export async function createSession(userId: string, displayName: string): Promise<void> {
+export async function createSession(
+  userId: string,
+  displayName: string,
+  role: UserRole,
+): Promise<void> {
   const expiresAt = Date.now() + SESSION_DURATION_MS;
-  const token = await encrypt({ userId, displayName, expiresAt });
+  const token = await encrypt({ userId, displayName, role, expiresAt });
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
