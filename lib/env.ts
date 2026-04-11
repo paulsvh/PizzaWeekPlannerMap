@@ -35,6 +35,9 @@ export const env = {
     // Support both literal newlines (Vercel UI paste) and escaped \n (.env.local)
     return required('FIREBASE_PRIVATE_KEY').replace(/\\n/g, '\n');
   },
+  get googlePlacesServerKey() {
+    return required('GOOGLE_PLACES_SERVER_KEY');
+  },
 };
 
 export const publicEnv = {

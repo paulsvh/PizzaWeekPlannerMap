@@ -42,6 +42,10 @@ yarn-error.log*
 # Claude Code harness state
 .claude/
 
+# Scraped restaurant data — derived output from `npm run scrape`,
+# regenerated on demand; don't mirror EverOut content in git.
+/data/
+
 # vercel
 .vercel
 

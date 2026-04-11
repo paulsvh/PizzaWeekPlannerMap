@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "scrape": "tsx scripts/scrape-everout.ts",
-    "seed": "tsx scripts/seed-firestore.ts"
+    "scrape": "tsx --env-file=.env.local scripts/scrape-everout.ts",
+    "seed": "tsx --env-file=.env.local scripts/seed-firestore.ts"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "firebase-admin": "^13.8.0",
     "jose": "^6.2.2",
     "next": "16.2.3",
