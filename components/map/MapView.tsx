@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   APIProvider,
   Map,
@@ -10,8 +10,13 @@ import {
 import type { Restaurant } from '@/lib/types';
 import { RestaurantMarker } from '@/components/map/RestaurantMarker';
 import { MapHeader } from '@/components/map/MapHeader';
+import { PlotModeFab } from '@/components/map/PlotModeFab';
+import { RoutePolyline } from '@/components/map/RoutePolyline';
 import { RestaurantSheet } from '@/components/sheets/RestaurantSheet';
+import { PlotModeSheet } from '@/components/sheets/PlotModeSheet';
 import { StarsProvider, useStars } from '@/components/context/StarsProvider';
+import { useGeolocation } from '@/lib/maps/use-geolocation';
+import { usePlotRoute } from '@/lib/maps/use-plot-route';
 
 type MapViewProps = {
   restaurants: Restaurant[];
@@ -20,7 +25,7 @@ type MapViewProps = {
   initialStarredIds: string[];
 };
 
-type MapViewInnerProps = Omit<MapViewProps, 'initialStarredIds'>;
+type MapViewInnerProps = Omit<MapViewProps, 'initialStarredIds' | 'mapsApiKey'>;
 
 // Downtown Portland — used as the fallback center when we can't compute
 // bounds from restaurants (e.g. empty list in dev).
@@ -66,13 +71,18 @@ export function MapView({
     return <MissingMapKeyNotice displayName={displayName} />;
   }
 
+  // APIProvider wraps MapViewInner so any hooks inside (useMapsLibrary
+  // from usePlotRoute, useMap from RoutePolyline) can find the Maps
+  // context. Putting it inside MapViewInner would leave the hooks
+  // stranded because they'd be called one level above their provider.
   return (
     <StarsProvider initialStarredIds={initialStarredIds}>
-      <MapViewInner
-        restaurants={restaurants}
-        displayName={displayName}
-        mapsApiKey={mapsApiKey}
-      />
+      <APIProvider apiKey={mapsApiKey}>
+        <MapViewInner
+          restaurants={restaurants}
+          displayName={displayName}
+        />
+      </APIProvider>
     </StarsProvider>
   );
 }
@@ -80,11 +90,142 @@ export function MapView({
 function MapViewInner({
   restaurants,
   displayName,
-  mapsApiKey,
 }: MapViewInnerProps) {
   const [selected, setSelected] = useState<Restaurant | null>(null);
-  const { isStarred } = useStars();
+  const [plotMode, setPlotMode] = useState(false);
+  /**
+   * User's custom stop order. Null means "use Google's optimization".
+   * When the user clicks an up/down arrow in the plot sheet, we seed
+   * this from the current result and then apply the swap. Subsequent
+   * starring/unstarring prunes and extends the manual order in-place.
+   */
+  const [manualOrder, setManualOrder] = useState<Restaurant[] | null>(null);
+  const { starred, isStarred } = useStars();
   const bounds = useMemo(() => computeBounds(restaurants), [restaurants]);
+
+  // Geolocation — requested lazily when plot mode activates, then
+  // reused for subsequent recomputations.
+  const { coords: geoCoords, status: geoStatus, request: requestGeo } =
+    useGeolocation();
+
+  // Derive the ordered list of starred restaurants (stable order by
+  // restaurant array index) for the plot route call.
+  const starredRestaurants = useMemo(
+    () => restaurants.filter((r) => starred.has(r.id)),
+    [restaurants, starred],
+  );
+
+  // Origin: user's GPS if granted; else fall back to the first
+  // starred restaurant's coordinates. If no stars yet, origin is null
+  // and usePlotRoute returns 'too-few' anyway.
+  const origin = useMemo<google.maps.LatLngLiteral | null>(() => {
+    if (geoStatus === 'granted' && geoCoords) return geoCoords;
+    if (
+      (geoStatus === 'denied' ||
+        geoStatus === 'unavailable' ||
+        geoStatus === 'timeout') &&
+      starredRestaurants.length > 0
+    ) {
+      return { lat: starredRestaurants[0].lat, lng: starredRestaurants[0].lng };
+    }
+    return null;
+  }, [geoStatus, geoCoords, starredRestaurants]);
+
+  // The actual waypoints we hand to the Directions hook: the user's
+  // custom order when they've set one, otherwise the raw starred set
+  // (and we ask Google to optimize).
+  const waypointsForRoute = manualOrder ?? starredRestaurants;
+
+  const { status: plotStatus, result: plotResult, error: plotError } =
+    usePlotRoute({
+      enabled: plotMode,
+      origin,
+      waypoints: waypointsForRoute,
+      optimize: manualOrder === null,
+    });
+
+  // When plot mode activates, kick off a geolocation request (unless
+  // we already have coords from a previous attempt in this session).
+  useEffect(() => {
+    if (plotMode && geoStatus === 'idle') {
+      requestGeo();
+    }
+  }, [plotMode, geoStatus, requestGeo]);
+
+  // Exiting plot mode wipes any manual ordering the user had —
+  // re-entering starts fresh with Google's optimization.
+  useEffect(() => {
+    if (!plotMode) {
+      setManualOrder(null);
+    }
+  }, [plotMode]);
+
+  // Keep manualOrder in sync with the starred set. If the user stars
+  // a new restaurant while in plot mode, append it to the end. If
+  // they un-star one, drop it from the order. No-op if the set is
+  // unchanged (common case — the effect re-runs whenever
+  // starredRestaurants identity changes, which is every toggle).
+  useEffect(() => {
+    setManualOrder((prev) => {
+      if (prev === null) return null;
+      const starredIdSet = new Set(starredRestaurants.map((r) => r.id));
+      const kept = prev.filter((r) => starredIdSet.has(r.id));
+      const keptIdSet = new Set(kept.map((r) => r.id));
+      const added = starredRestaurants.filter((r) => !keptIdSet.has(r.id));
+      // Short-circuit if nothing changed so we don't create a new
+      // array reference and re-trigger downstream effects.
+      if (kept.length === prev.length && added.length === 0) {
+        return prev;
+      }
+      return [...kept, ...added];
+    });
+  }, [starredRestaurants]);
+
+  // Toggling plot mode: close any open restaurant sheet so the two
+  // drawers don't stack.
+  const togglePlotMode = () => {
+    setPlotMode((prev) => {
+      const next = !prev;
+      if (next) setSelected(null);
+      return next;
+    });
+  };
+
+  /* ---------- reorder handlers ---------- */
+
+  // Seed the manual order from whatever is currently displayed (the
+  // hook's result if Google was optimizing, or the existing manual
+  // order) and swap the two adjacent items.
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    setManualOrder((prev) => {
+      const base = prev ?? plotResult?.orderedStops ?? [];
+      if (index >= base.length) return prev;
+      const next = [...base];
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      return next;
+    });
+  };
+
+  const handleMoveDown = (index: number) => {
+    setManualOrder((prev) => {
+      const base = prev ?? plotResult?.orderedStops ?? [];
+      if (index >= base.length - 1) return prev ?? base;
+      const next = [...base];
+      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      return next;
+    });
+  };
+
+  const handleResetOrder = () => {
+    setManualOrder(null);
+  };
+
+  // The stops to DISPLAY in the sheet. When the user has reordered,
+  // their order is authoritative and should appear immediately (even
+  // if the route is still recomputing for the new distance/duration).
+  // When no manual order is set, we use whatever the hook returned.
+  const displayStops = manualOrder ?? plotResult?.orderedStops ?? [];
 
   // Close the sheet if the user interacts with the map
   const handleCameraChanged = (_event: MapCameraChangedEvent) => {
@@ -94,41 +235,66 @@ function MapViewInner({
 
   return (
     <div className="fixed inset-0 overflow-hidden">
-      <APIProvider apiKey={mapsApiKey}>
-        <Map
-          mapId="DEMO_MAP_ID"
-          defaultCenter={PORTLAND_CENTER}
-          defaultZoom={DEFAULT_ZOOM}
-          defaultBounds={bounds ?? undefined}
-          gestureHandling="greedy"
-          mapTypeControl={false}
-          streetViewControl={false}
-          fullscreenControl={false}
-          onCameraChanged={handleCameraChanged}
-          className="h-full w-full"
-        >
-          {restaurants.map((r) => (
-            <AdvancedMarker
-              key={r.id}
-              position={{ lat: r.lat, lng: r.lng }}
-              onClick={() => setSelected(r)}
-              title={`${r.name} — ${r.pizzaName}`}
-            >
-              <RestaurantMarker
-                restaurant={r}
-                isSelected={selected?.id === r.id}
-                isStarred={isStarred(r.id)}
-              />
-            </AdvancedMarker>
-          ))}
-        </Map>
-      </APIProvider>
+      <Map
+        mapId="DEMO_MAP_ID"
+        defaultCenter={PORTLAND_CENTER}
+        defaultZoom={DEFAULT_ZOOM}
+        defaultBounds={bounds ?? undefined}
+        gestureHandling="greedy"
+        mapTypeControl={false}
+        streetViewControl={false}
+        fullscreenControl={false}
+        onCameraChanged={handleCameraChanged}
+        className="h-full w-full"
+      >
+        {restaurants.map((r) => (
+          <AdvancedMarker
+            key={r.id}
+            position={{ lat: r.lat, lng: r.lng }}
+            onClick={() => {
+              // Pin clicks are disabled during plot mode so the
+              // restaurant sheet doesn't stack over the plot sheet.
+              if (plotMode) return;
+              setSelected(r);
+            }}
+            title={`${r.name} — ${r.pizzaName}`}
+          >
+            <RestaurantMarker
+              restaurant={r}
+              isSelected={selected?.id === r.id}
+              isStarred={isStarred(r.id)}
+            />
+          </AdvancedMarker>
+        ))}
+
+        {/* Plot-route polyline overlay — only rendered when the
+            directions call has succeeded. */}
+        {plotMode && plotResult && plotResult.path.length > 0 && (
+          <RoutePolyline path={plotResult.path} />
+        )}
+      </Map>
 
       <MapHeader displayName={displayName} />
+
+      <PlotModeFab active={plotMode} onToggle={togglePlotMode} />
 
       <RestaurantSheet
         restaurant={selected}
         onClose={() => setSelected(null)}
+      />
+
+      <PlotModeSheet
+        open={plotMode}
+        onExit={() => setPlotMode(false)}
+        status={plotStatus}
+        result={plotResult}
+        error={plotError}
+        starredCount={starredRestaurants.length}
+        displayStops={displayStops}
+        isManualOrder={manualOrder !== null}
+        onMoveUp={handleMoveUp}
+        onMoveDown={handleMoveDown}
+        onResetOrder={handleResetOrder}
       />
     </div>
   );
