@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# …but keep the example template committed
+!.env*.example
+
+# Firebase service account keys — NEVER commit these
+*firebase-adminsdk*.json
+*serviceAccountKey*.json
+
+# Claude Code harness state
+.claude/
 
 # vercel
 .vercel

@@ -1,26 +1,137 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* =========================================================================
+   PIZZA WEEK BROADSHEET — design tokens
+   Newsprint palette + editorial serif/mono typography pairing.
+   Fonts (Bodoni Moda, IBM Plex Mono) are loaded via next/font in layout.tsx
+   and exposed as CSS variables we reference here.
+   ========================================================================= */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors */
+  --color-cream: #f1ebdb;
+  --color-cream-deep: #e6ddc3;
+  --color-ink: #161413;
+  --color-ink-soft: #3a3530;
+  --color-ink-faded: #75695e;
+  --color-sauce: #b32113;
+  --color-sauce-dark: #7c1308;
+  --color-mustard: #b68a2e;
+  --color-rule: #cbbf9f;
+
+  /* Fonts */
+  --font-display: var(--font-bodoni-moda), "Didot", "Times New Roman", serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Courier New", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-display);
+  /* Newsprint halftone dot texture */
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(22, 20, 19, 0.09) 1px, transparent 0);
+  background-size: 5px 5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-sauce);
+  color: var(--color-cream);
+}
+
+/* =========================================================================
+   Editorial entrance animations
+   ========================================================================= */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slash {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: rotate(-2deg) scale(2.2);
+  }
+  70% {
+    opacity: 1;
+    transform: rotate(-10deg) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+.animate-rise {
+  animation: rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-slash {
+  animation: slash 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left;
+}
+
+.animate-stamp {
+  animation: stamp 900ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-shake {
+  animation: shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+/* Give inputs a newsprint cursor caret */
+input {
+  caret-color: var(--color-sauce);
+}
+
+/* Reduce motion: collapse all entrance/shake animations */
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-slash,
+  .animate-stamp,
+  .animate-shake {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
