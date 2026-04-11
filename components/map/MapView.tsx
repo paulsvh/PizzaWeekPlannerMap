@@ -11,12 +11,16 @@ import type { Restaurant } from '@/lib/types';
 import { RestaurantMarker } from '@/components/map/RestaurantMarker';
 import { MapHeader } from '@/components/map/MapHeader';
 import { RestaurantSheet } from '@/components/sheets/RestaurantSheet';
+import { StarsProvider, useStars } from '@/components/context/StarsProvider';
 
 type MapViewProps = {
   restaurants: Restaurant[];
   displayName: string;
   mapsApiKey: string;
+  initialStarredIds: string[];
 };
+
+type MapViewInnerProps = Omit<MapViewProps, 'initialStarredIds'>;
 
 // Downtown Portland — used as the fallback center when we can't compute
 // bounds from restaurants (e.g. empty list in dev).
@@ -41,13 +45,45 @@ function computeBounds(restaurants: Restaurant[]) {
  * pin for every participating restaurant, plus a floating broadsheet
  * header and a vaul bottom sheet that opens on pin tap.
  *
+ * The outer MapView establishes the StarsProvider so MapViewInner
+ * and RestaurantSheet (both descendants) can call useStars() to
+ * read/toggle the current user's stars. initialStarredIds are seeded
+ * from a server-side Firestore fetch in app/page.tsx so there's no
+ * "loading" flash of empty stars on first render.
+ *
  * No client-side Firebase: the parent Server Component fetches the
- * restaurants array from Firestore via the Admin SDK and passes it
- * down as a prop, so the only client network traffic is the Maps JS
- * API itself.
+ * restaurants array and starred IDs via the Admin SDK and passes
+ * them down as props. The only client network traffic from this
+ * page is the Maps JS API itself and the /api/stars toggle POSTs.
  */
-export function MapView({ restaurants, displayName, mapsApiKey }: MapViewProps) {
+export function MapView({
+  restaurants,
+  displayName,
+  mapsApiKey,
+  initialStarredIds,
+}: MapViewProps) {
+  if (!mapsApiKey) {
+    return <MissingMapKeyNotice displayName={displayName} />;
+  }
+
+  return (
+    <StarsProvider initialStarredIds={initialStarredIds}>
+      <MapViewInner
+        restaurants={restaurants}
+        displayName={displayName}
+        mapsApiKey={mapsApiKey}
+      />
+    </StarsProvider>
+  );
+}
+
+function MapViewInner({
+  restaurants,
+  displayName,
+  mapsApiKey,
+}: MapViewInnerProps) {
   const [selected, setSelected] = useState<Restaurant | null>(null);
+  const { isStarred } = useStars();
   const bounds = useMemo(() => computeBounds(restaurants), [restaurants]);
 
   // Close the sheet if the user interacts with the map
@@ -55,10 +91,6 @@ export function MapView({ restaurants, displayName, mapsApiKey }: MapViewProps) 
     // Intentionally empty — we don't auto-close on pan/zoom, because
     // that feels hostile on mobile where any drag would dismiss the sheet.
   };
-
-  if (!mapsApiKey) {
-    return <MissingMapKeyNotice displayName={displayName} />;
-  }
 
   return (
     <div className="fixed inset-0 overflow-hidden">
@@ -85,6 +117,7 @@ export function MapView({ restaurants, displayName, mapsApiKey }: MapViewProps) 
               <RestaurantMarker
                 restaurant={r}
                 isSelected={selected?.id === r.id}
+                isStarred={isStarred(r.id)}
               />
             </AdvancedMarker>
           ))}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Drawer } from 'vaul';
 import type { Restaurant } from '@/lib/types';
+import { useStars } from '@/components/context/StarsProvider';
 
 type RestaurantSheetProps = {
   restaurant: Restaurant | null;
@@ -76,6 +77,9 @@ export function RestaurantSheet({ restaurant, onClose }: RestaurantSheetProps) {
    ------------------------------------------------------------------------- */
 
 function SheetContent({ restaurant }: { restaurant: Restaurant }) {
+  const { isStarred, toggle } = useStars();
+  const starred = isStarred(restaurant.id);
+
   const gmapsQuery = encodeURIComponent(
     `${restaurant.name}, ${restaurant.address}`,
   );
@@ -101,7 +105,7 @@ function SheetContent({ restaurant }: { restaurant: Restaurant }) {
         </span>
       </div>
 
-      {/* =========== Hero photograph =========== */}
+      {/* =========== Hero photograph (with floating star stamp) =========== */}
       <div
         className="animate-rise relative bg-cream-deep"
         style={{ animationDelay: '140ms' }}
@@ -119,6 +123,37 @@ function SheetContent({ restaurant }: { restaurant: Restaurant }) {
             &mdash; No Photograph Available &mdash;
           </div>
         )}
+
+        {/* Star toggle — rotated stamp over the top-right of the photo.
+            Inverts fill on toggle; the "animate-marker-pop" class on the
+            starred state gives it a subtle bounce when you press star. */}
+        <button
+          type="button"
+          onClick={() => toggle(restaurant.id)}
+          aria-pressed={starred}
+          aria-label={
+            starred
+              ? `Remove ${restaurant.pizzaName} from your starred list`
+              : `Star ${restaurant.pizzaName}`
+          }
+          className={`animate-stamp absolute top-4 right-4 z-10 flex items-center gap-1.5 rotate-[-5deg] border-[2.5px] px-2.5 py-1.5 shadow-[3px_3px_0_rgba(22,20,19,0.25)] transition-all duration-150 hover:rotate-[-3deg] hover:shadow-[4px_4px_0_rgba(22,20,19,0.3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce ${
+            starred
+              ? 'animate-marker-pop border-ink bg-mustard text-ink'
+              : 'border-ink bg-cream/95 text-ink hover:bg-mustard'
+          }`}
+          style={{ animationDelay: '400ms' }}
+        >
+          <span
+            aria-hidden
+            className={`text-sm leading-none ${starred ? 'text-ink' : 'text-ink'}`}
+          >
+            {starred ? '\u2605' : '\u2606'}
+          </span>
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase">
+            {starred ? 'Starred' : 'Star'}
+          </span>
+        </button>
+
         {/* Caption rule under the image, newsprint photo-caption style */}
         <div className="flex items-center justify-between border-t-2 border-b border-ink bg-cream px-5 py-1.5">
           <span className="font-mono text-[8px] tracking-[0.22em] text-ink-soft uppercase">
