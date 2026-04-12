@@ -13,20 +13,13 @@ import {
   hashInviteToken,
 } from '@/lib/auth/invites';
 import { sendInviteEmail } from '@/lib/email/sender';
+import { CreateInviteSchema } from '@/lib/validation/invite-schema';
 
 /**
  * Admin Server Actions — all gated by verifyAdminSession() which 404s
  * non-admin callers. No client-side can invoke these without a valid
  * admin JWT cookie.
  */
-
-const CreateInviteSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email({ error: 'Enter a valid email address.' }),
-});
 
 export type CreateInviteState =
   | {

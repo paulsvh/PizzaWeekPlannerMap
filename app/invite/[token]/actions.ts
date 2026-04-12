@@ -7,6 +7,7 @@ import { getDb } from '@/lib/firebase/admin';
 import { createSession } from '@/lib/auth/session';
 import { hashPassword, validatePasswordPolicy } from '@/lib/auth/password';
 import { hashInviteToken, isInviteExpired } from '@/lib/auth/invites';
+import { ClaimSchema } from '@/lib/validation/claim-schema';
 
 /**
  * Claim-invite Server Action.
@@ -20,17 +21,6 @@ import { hashInviteToken, isInviteExpired } from '@/lib/auth/invites';
  *   6. Mark the invite as claimed (transaction: user doc + invite doc)
  *   7. Sign a session JWT and redirect to `/`
  */
-
-const ClaimSchema = z.object({
-  token: z.string().min(1),
-  displayName: z
-    .string()
-    .trim()
-    .min(1, { message: 'Display name is required.' })
-    .max(40, { message: 'Display name must be 40 characters or less.' }),
-  password: z.string().min(1, { message: 'Password is required.' }),
-  passwordConfirm: z.string().min(1),
-});
 
 export type ClaimState =
   | {

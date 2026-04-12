@@ -6,6 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from '@/lib/firebase/admin';
 import { createSession, deleteSession } from '@/lib/auth/session';
 import { verifyPassword } from '@/lib/auth/password';
+import { LoginSchema } from '@/lib/validation/login-schema';
 import type { UserRole } from '@/lib/types';
 
 /**
@@ -17,15 +18,6 @@ import type { UserRole } from '@/lib/types';
  * errors for both missing-email and wrong-password cases so attackers
  * can't enumerate valid emails.
  */
-
-const LoginSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email({ error: 'Enter a valid email address.' }),
-  password: z.string().min(1, { message: 'Password is required.' }),
-});
 
 export type LoginState =
   | {

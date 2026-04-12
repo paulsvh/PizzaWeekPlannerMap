@@ -1,12 +1,6 @@
-import { z } from 'zod';
 import { verifySessionOrNull } from '@/lib/auth/dal';
 import { saveRoute } from '@/lib/firebase/routes';
-// IMPORTANT: import from the constants module, NOT from
-// use-plot-route.ts — that file is marked 'use client', and
-// importing a plain value from a client module server-side wraps it
-// in an RSC client reference. Calling that "value" as a function
-// throws "Attempted to call MAX_WAYPOINTS from the server".
-import { MAX_WAYPOINTS } from '@/lib/maps/constants';
+import { PostSchema } from '@/lib/validation/route-schemas';
 
 /**
  * /api/routes Route Handler.
@@ -23,48 +17,6 @@ import { MAX_WAYPOINTS } from '@/lib/maps/constants';
  */
 
 export const runtime = 'nodejs';
-
-// Total stops = 1 anchor + up to MAX_WAYPOINTS middle stops.
-const MAX_STOPS = MAX_WAYPOINTS + 1;
-
-const PostSchema = z
-  .object({
-    stopRestaurantIds: z
-      .array(z.string().min(1).max(200))
-      .min(2, { error: 'Need at least two stops.' })
-      .max(MAX_STOPS, {
-        error: `Too many stops (max ${MAX_STOPS}).`,
-      }),
-    originLat: z.number().gte(-90).lte(90),
-    originLng: z.number().gte(-180).lte(180),
-    encodedPolyline: z.string().min(1).max(20_000),
-    totalDistanceMeters: z.number().gte(0).lte(10_000_000),
-    totalDurationSeconds: z.number().gte(0).lte(60 * 60 * 24),
-    legDistancesMeters: z
-      .array(z.number().gte(0).lte(10_000_000))
-      .min(1)
-      .max(MAX_STOPS - 1),
-    legDurationsSeconds: z
-      .array(z.number().gte(0).lte(60 * 60 * 24))
-      .min(1)
-      .max(MAX_STOPS - 1),
-  })
-  .refine(
-    (data) =>
-      data.legDistancesMeters.length === data.stopRestaurantIds.length - 1,
-    {
-      error:
-        'legDistancesMeters must have exactly stopRestaurantIds.length - 1 entries (linear route, no loop).',
-    },
-  )
-  .refine(
-    (data) =>
-      data.legDurationsSeconds.length === data.stopRestaurantIds.length - 1,
-    {
-      error:
-        'legDurationsSeconds must have exactly stopRestaurantIds.length - 1 entries (linear route, no loop).',
-    },
-  );
 
 export async function POST(request: Request): Promise<Response> {
   const session = await verifySessionOrNull();

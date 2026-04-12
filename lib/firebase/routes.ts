@@ -1,6 +1,7 @@
 import 'server-only';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from '@/lib/firebase/admin';
+import { timestampToMillis, isNumberArray } from '@/lib/utils';
 import type { Route } from '@/lib/types';
 
 /**
@@ -12,25 +13,6 @@ import type { Route } from '@/lib/types';
  * Directions API response, both for size and to respect Google's
  * caching restrictions.
  */
-
-function timestampToMillis(value: unknown): number {
-  if (typeof value === 'number') return value;
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'toMillis' in value &&
-    typeof (value as { toMillis: () => number }).toMillis === 'function'
-  ) {
-    return (value as { toMillis: () => number }).toMillis();
-  }
-  return 0;
-}
-
-function isNumberArray(value: unknown): value is number[] {
-  return (
-    Array.isArray(value) && value.every((v) => typeof v === 'number')
-  );
-}
 
 function normalizeRoute(id: string, d: Record<string, unknown>): Route {
   return {

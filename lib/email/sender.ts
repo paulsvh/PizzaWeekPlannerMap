@@ -1,6 +1,7 @@
 import 'server-only';
 import { Resend } from 'resend';
 import { env } from '@/lib/env';
+import { escapeHtml } from '@/lib/utils';
 
 /**
  * Resend email wrapper with a "hybrid" fallback: if RESEND_API_KEY
@@ -150,11 +151,4 @@ function buildInviteHtml(
 </html>`;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escapeHtml is now imported from @/lib/utils
