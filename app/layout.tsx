@@ -20,6 +20,14 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: 'Pizza Week Planner',
   description: 'Plan your Portland Pizza Week crawl with friends.',
+  openGraph: {
+    title: 'Pizza Week Planner',
+    description:
+      'Plan your Portland Pizza Week 2026 crawl — star restaurants, plot biking routes, and vote on the best pizza crawls with friends.',
+    type: 'website',
+    locale: 'en_US',
+    siteName: 'Pizza Week Planner',
+  },
 };
 
 export const viewport: Viewport = {
