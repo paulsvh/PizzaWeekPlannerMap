@@ -1,40 +1,32 @@
 import { z } from 'zod';
 import { verifySessionOrNull } from '@/lib/auth/dal';
-import { saveRoute } from '@/lib/firebase/routes';
-// IMPORTANT: import from the constants module, NOT from
-// use-plot-route.ts — that file is marked 'use client', and
-// importing a plain value from a client module server-side wraps it
-// in an RSC client reference. Calling that "value" as a function
-// throws "Attempted to call MAX_WAYPOINTS from the server".
+import { getRouteById, updateRoute } from '@/lib/firebase/routes';
 import { MAX_WAYPOINTS } from '@/lib/maps/constants';
 
 /**
- * /api/routes Route Handler.
+ * /api/routes/[routeId]
  *
- *   POST → body is a computed route from the plot-mode sheet.
- *          Validates, persists via saveRoute(), and returns
- *          { routeId }. The client then pushes to /routes/{id}.
+ *   PATCH → updates the editable fields of a route. Body shape is
+ *           the same as POST /api/routes. Only the route's creator
+ *           (or an admin) can update.
  *
  * Uses verifySessionOrNull so auth failures return JSON 401 instead
- * of redirecting to /login — redirects break client-side fetch()
- * callers because fetch follows 3xx by default.
+ * of redirecting; the editor's fetch() callers would otherwise
+ * silently follow the redirect to /login HTML.
  *
  * Node runtime so firebase-admin can load.
  */
 
 export const runtime = 'nodejs';
 
-// Total stops = 1 anchor + up to MAX_WAYPOINTS middle stops.
 const MAX_STOPS = MAX_WAYPOINTS + 1;
 
-const PostSchema = z
+const PatchSchema = z
   .object({
     stopRestaurantIds: z
       .array(z.string().min(1).max(200))
       .min(2, { error: 'Need at least two stops.' })
-      .max(MAX_STOPS, {
-        error: `Too many stops (max ${MAX_STOPS}).`,
-      }),
+      .max(MAX_STOPS, { error: `Too many stops (max ${MAX_STOPS}).` }),
     originLat: z.number().gte(-90).lte(90),
     originLng: z.number().gte(-180).lte(180),
     encodedPolyline: z.string().min(1).max(20_000),
@@ -66,10 +58,32 @@ const PostSchema = z
     },
   );
 
-export async function POST(request: Request): Promise<Response> {
+type RouteContext = { params: Promise<{ routeId: string }> };
+
+export async function PATCH(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
   const session = await verifySessionOrNull();
   if (!session) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const { routeId } = await context.params;
+  if (!routeId) {
+    return Response.json({ error: 'Missing routeId' }, { status: 400 });
+  }
+
+  const route = await getRouteById(routeId);
+  if (!route) {
+    return Response.json({ error: 'Route not found' }, { status: 404 });
+  }
+
+  // Only the creator (or an admin) can edit a route.
+  const isCreator = route.creatorUserId === session.userId;
+  const isAdmin = session.role === 'admin';
+  if (!isCreator && !isAdmin) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let raw: unknown;
@@ -79,7 +93,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = PostSchema.safeParse(raw);
+  const parsed = PatchSchema.safeParse(raw);
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors ?? {})
       .flat()
@@ -91,16 +105,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const routeId = await saveRoute({
-      creatorUserId: session.userId,
-      creatorDisplayName: session.displayName,
-      ...parsed.data,
-    });
+    await updateRoute(routeId, parsed.data);
     return Response.json({ routeId });
   } catch (err) {
-    console.error('[api/routes] saveRoute failed:', err);
+    console.error('[api/routes/PATCH] update failed:', err);
     return Response.json(
-      { error: 'Could not save the route. Please try again.' },
+      { error: 'Could not update the route. Please try again.' },
       { status: 500 },
     );
   }

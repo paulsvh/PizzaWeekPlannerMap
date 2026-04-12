@@ -101,15 +101,64 @@ export async function getRouteById(routeId: string): Promise<Route | null> {
 }
 
 /**
- * Fetch all routes, sorted by creation date descending. Used by the
- * Phase 6a minimal routes list page; Phase 6b swaps in a richer query
- * (by votes, by date) + pagination.
+ * Fetch all routes, sorted by either recency or vote count. Sorting
+ * is server-side so the routes list page can drive it from a URL
+ * search param without re-fetching client-side.
  */
-export async function getAllRoutes(): Promise<Route[]> {
+export async function getAllRoutes(
+  sortBy: 'recent' | 'votes' = 'recent',
+): Promise<Route[]> {
   const db = getDb();
+  const orderField = sortBy === 'votes' ? 'voteCount' : 'createdAt';
   const snap = await db
     .collection('routes')
-    .orderBy('createdAt', 'desc')
+    .orderBy(orderField, 'desc')
     .get();
   return snap.docs.map((doc) => normalizeRoute(doc.id, doc.data()));
+}
+
+/**
+ * Hard-delete a route doc. Caller is responsible for cleanup of
+ * dependent docs (votes) — see deleteAllVotesForRoute in
+ * lib/firebase/votes.ts. Caller is also responsible for verifying
+ * that the requester is the creator (or an admin).
+ */
+export async function deleteRouteById(routeId: string): Promise<void> {
+  const db = getDb();
+  await db.collection('routes').doc(routeId).delete();
+}
+
+type UpdateRouteInput = {
+  stopRestaurantIds: string[];
+  originLat: number;
+  originLng: number;
+  encodedPolyline: string;
+  totalDistanceMeters: number;
+  totalDurationSeconds: number;
+  legDistancesMeters: number[];
+  legDurationsSeconds: number[];
+};
+
+/**
+ * Update a route's editable fields. Does NOT touch creator info,
+ * voteCount, or createdAt — only the geometry/stops/leg data that
+ * the user can change via the editor. Caller is responsible for
+ * verifying creator-or-admin permission before calling.
+ */
+export async function updateRoute(
+  routeId: string,
+  input: UpdateRouteInput,
+): Promise<void> {
+  const db = getDb();
+  await db.collection('routes').doc(routeId).update({
+    stopRestaurantIds: input.stopRestaurantIds,
+    originLat: input.originLat,
+    originLng: input.originLng,
+    encodedPolyline: input.encodedPolyline,
+    totalDistanceMeters: input.totalDistanceMeters,
+    totalDurationSeconds: input.totalDurationSeconds,
+    legDistancesMeters: input.legDistancesMeters,
+    legDurationsSeconds: input.legDurationsSeconds,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
 }

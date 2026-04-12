@@ -1,19 +1,32 @@
 import Link from 'next/link';
 import { verifySession } from '@/lib/auth/dal';
 import { getAllRoutes } from '@/lib/firebase/routes';
+import { getUserVotedRouteIds } from '@/lib/firebase/votes';
 import type { Route } from '@/lib/types';
 
+type SortBy = 'recent' | 'votes';
+
+type PageProps = {
+  searchParams: Promise<{ sort?: string }>;
+};
+
 /**
- * Saved Routes list — MINIMAL Phase 6a version.
+ * Saved Routes list — the route archive.
  *
- * Phase 6b will replace this with a polished sortable/filterable
- * design, voting integration, and richer cards. For now this is a
- * functional broadsheet list that lets users browse and navigate
- * to /routes/[id] detail pages.
+ * Server Component. Sort is driven by `?sort=votes` or `?sort=recent`
+ * (default) so the URL is shareable. Cards show creator, mini-stats,
+ * vote count, filed date, and a "✓ VOTED" indicator if the current
+ * user has already voted on the route.
  */
-export default async function RoutesListPage() {
-  await verifySession();
-  const routes = await getAllRoutes();
+export default async function RoutesListPage({ searchParams }: PageProps) {
+  const session = await verifySession();
+  const params = await searchParams;
+  const sortBy: SortBy = params.sort === 'votes' ? 'votes' : 'recent';
+
+  const [routes, votedSet] = await Promise.all([
+    getAllRoutes(sortBy),
+    getUserVotedRouteIds(session.userId),
+  ]);
 
   return (
     <main className="relative min-h-dvh">
@@ -36,7 +49,7 @@ export default async function RoutesListPage() {
             <span>Back to Map</span>
           </Link>
           <span className="font-mono text-[10px] tracking-[0.2em] text-ink-faded uppercase sm:text-[11px]">
-            Phase 6a &middot; Minimal List
+            The Archive
           </span>
         </div>
       </nav>
@@ -80,14 +93,41 @@ export default async function RoutesListPage() {
             <span>
               {routes.length} route{routes.length === 1 ? '' : 's'} on record
             </span>
-            <span className="text-ink-faded">Most recent first</span>
+            <span className="text-ink-faded">
+              {sortBy === 'votes' ? 'Most voted first' : 'Most recent first'}
+            </span>
           </div>
         </header>
 
+        {/* Sort toggle */}
+        {routes.length > 0 && (
+          <section
+            className="animate-rise mt-8 flex items-center gap-3"
+            style={{ animationDelay: '540ms' }}
+            aria-label="Sort routes"
+          >
+            <span aria-hidden className="h-[2px] w-6 bg-ink sm:w-8" />
+            <span className="font-mono text-[10px] font-bold tracking-[0.25em] text-ink-soft uppercase sm:text-[11px]">
+              Sort By
+            </span>
+            <SortToggleLink
+              href="/routes?sort=recent"
+              active={sortBy === 'recent'}
+              label="Most Recent"
+            />
+            <SortToggleLink
+              href="/routes?sort=votes"
+              active={sortBy === 'votes'}
+              label="Most Voted"
+            />
+            <span aria-hidden className="h-[2px] flex-1 bg-ink" />
+          </section>
+        )}
+
         {/* Route list */}
         <section
-          className="animate-rise mt-10 flex flex-col gap-3"
-          style={{ animationDelay: '580ms' }}
+          className="animate-rise mt-6 flex flex-col gap-3"
+          style={{ animationDelay: '620ms' }}
           aria-label="Saved routes"
         >
           {routes.length === 0 ? (
@@ -95,7 +135,11 @@ export default async function RoutesListPage() {
           ) : (
             <ul className="flex flex-col gap-3">
               {routes.map((route) => (
-                <RouteCard key={route.id} route={route} />
+                <RouteCard
+                  key={route.id}
+                  route={route}
+                  hasVoted={votedSet.has(route.id)}
+                />
               ))}
             </ul>
           )}
@@ -109,7 +153,7 @@ export default async function RoutesListPage() {
             <span>Route Archive</span>
           </div>
           <p className="font-mono text-center text-[8px] tracking-[0.2em] text-ink-faded uppercase">
-            Sortable list + voting land in Phase 6b
+            Vote on routes you&rsquo;d ride. Tap a card to see the full dispatch.
           </p>
         </footer>
       </article>
@@ -118,10 +162,44 @@ export default async function RoutesListPage() {
 }
 
 /* =========================================================================
+   SortToggleLink — pill-style sort button
+   ========================================================================= */
+
+function SortToggleLink({
+  href,
+  active,
+  label,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={`font-mono border-[1.5px] border-ink px-2.5 py-1 text-[9px] font-bold tracking-[0.18em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:text-[10px] ${
+        active
+          ? 'bg-ink text-cream'
+          : 'bg-cream text-ink hover:bg-mustard'
+      }`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+/* =========================================================================
    RouteCard — a single row in the list
    ========================================================================= */
 
-function RouteCard({ route }: { route: Route }) {
+function RouteCard({
+  route,
+  hasVoted,
+}: {
+  route: Route;
+  hasVoted: boolean;
+}) {
   const miles = (route.totalDistanceMeters / 1609.344).toFixed(1);
   const durationText = formatDurationShort(route.totalDurationSeconds);
   const createdAtText = new Date(route.createdAt).toLocaleString('en-US', {
@@ -139,20 +217,45 @@ function RouteCard({ route }: { route: Route }) {
         {/* Top row: creator name + vote count */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[9px] font-bold tracking-[0.22em] text-ink-soft uppercase">
-              Route by
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono text-[9px] font-bold tracking-[0.22em] text-ink-soft uppercase">
+                Route by
+              </p>
+              {hasVoted && (
+                <span
+                  aria-label="You have voted for this route"
+                  className="font-mono inline-flex items-center gap-0.5 border border-sauce bg-sauce/10 px-1.5 py-0.5 text-[8px] font-bold tracking-[0.18em] text-sauce uppercase"
+                >
+                  <span aria-hidden>&#x2605;</span>
+                  <span>Your Vote</span>
+                </span>
+              )}
+            </div>
             <p className="font-display text-xl leading-tight font-bold break-words text-ink sm:text-2xl">
               <span className="text-sauce italic">
                 {route.creatorDisplayName}
               </span>
             </p>
           </div>
-          <div className="font-mono shrink-0 border border-ink bg-cream-deep px-2 py-1 text-center">
-            <div className="text-[15px] font-black text-ink">
+          <div
+            className={`font-mono shrink-0 border px-2 py-1 text-center transition-colors ${
+              hasVoted
+                ? 'border-sauce bg-sauce text-cream'
+                : 'border-ink bg-cream-deep text-ink'
+            }`}
+          >
+            <div
+              className={`text-[15px] font-black ${
+                hasVoted ? 'text-cream' : 'text-ink'
+              }`}
+            >
               {route.voteCount}
             </div>
-            <div className="text-[8px] tracking-[0.2em] text-ink-soft uppercase">
+            <div
+              className={`text-[8px] tracking-[0.2em] uppercase ${
+                hasVoted ? 'text-cream/80' : 'text-ink-soft'
+              }`}
+            >
               Votes
             </div>
           </div>

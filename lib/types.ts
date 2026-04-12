@@ -86,9 +86,10 @@ export type Route = {
   travelMode: 'BICYCLING';
   voteCount: number;
   createdAt: number;
-  // Per-leg metrics. For N stops, both arrays have length N+1:
-  // [origin→stop1, stop1→stop2, ..., stopN→origin].
-  // Nullable for routes saved before Phase 6a's leg-distance change.
+  // Per-leg metrics. For N stops, both arrays have length N-1:
+  // [stop0→stop1, stop1→stop2, ..., stopN-2→stopN-1] (linear, no loop).
+  // Older routes saved with loop semantics have length N. Nullable for
+  // routes saved before Phase 6a's leg-distance change.
   legDistancesMeters: number[] | null;
   legDurationsSeconds: number[] | null;
 };

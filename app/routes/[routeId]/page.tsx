@@ -3,7 +3,10 @@ import Link from 'next/link';
 import { verifySession } from '@/lib/auth/dal';
 import { getRouteById } from '@/lib/firebase/routes';
 import { getRestaurantsByIds } from '@/lib/firebase/restaurants';
+import { getUserVote } from '@/lib/firebase/votes';
 import { RouteDetailMap } from '@/components/map/RouteDetailMap';
+import { VoteButton } from '@/app/routes/[routeId]/VoteButton';
+import { DeleteRouteForm } from '@/app/routes/[routeId]/DeleteRouteForm';
 import type { Restaurant } from '@/lib/types';
 
 type PageProps = {
@@ -29,7 +32,10 @@ export default async function RouteDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const stops = await getRestaurantsByIds(route.stopRestaurantIds);
+  const [stops, hasUserVoted] = await Promise.all([
+    getRestaurantsByIds(route.stopRestaurantIds),
+    getUserVote(session.userId, routeId),
+  ]);
 
   const miles = (route.totalDistanceMeters / 1609.344).toFixed(1);
   const durationText = formatDuration(route.totalDurationSeconds);
@@ -39,6 +45,8 @@ export default async function RouteDetailPage({ params }: PageProps) {
     timeStyle: 'short',
   });
   const isCreator = session.userId === route.creatorUserId;
+  const isAdmin = session.role === 'admin';
+  const canEdit = isCreator || isAdmin;
   const missingStops = route.stopRestaurantIds.length - stops.length;
 
   return (
@@ -79,21 +87,6 @@ export default async function RouteDetailPage({ params }: PageProps) {
       </nav>
 
       <article className="relative mx-auto max-w-3xl px-5 pt-10 pb-16 sm:pt-14">
-        {/* ON RECORD stamp — rotated basil-green stamp in the upper
-            right. Pops in last in the entrance sequence, signaling
-            "this one's filed, not in motion." */}
-        <div
-          aria-hidden
-          className="animate-stamp pointer-events-none absolute top-8 right-[-14px] sm:top-12 sm:right-4"
-          style={{ animationDelay: '1050ms' }}
-        >
-          <div className="font-mono rotate-[5deg] border-[2.5px] border-basil bg-cream/85 px-3 py-1.5 text-center text-[9px] leading-[1.15] font-bold tracking-[0.22em] text-basil uppercase shadow-[3px_3px_0_rgba(77,91,42,0.22)] backdrop-blur-[1px] sm:text-[10px]">
-            On
-            <br />
-            Record
-          </div>
-        </div>
-
         {/* ============================================================
             Hero masthead — "Route by / Creator Name"
             ============================================================ */}
@@ -135,7 +128,7 @@ export default async function RouteDetailPage({ params }: PageProps) {
             style={{ animationDelay: '460ms' }}
           >
             <span>
-              {stops.length} stops &middot; biking &middot; loops back to start
+              {stops.length} stops &middot; biking &middot; start to finish
             </span>
             <span
               className="text-ink-faded"
@@ -218,18 +211,22 @@ export default async function RouteDetailPage({ params }: PageProps) {
             </div>
           ) : (
             (() => {
-              // First-stop-anchor semantics: for N stops, legs has
-              // length N. stops[0] is the start (no leg-in); stops[i]
-              // for i >= 1 uses legs[i-1]; the final return leg is
-              // legs[N-1]. Routes saved before this change have a
-              // different leg count and fall through to a no-legs
-              // render.
+              // Linear route semantics: for N stops the legs array
+              // has length N-1 (one leg between each adjacent pair,
+              // no return leg). Older routes saved with the loop
+              // semantics had legs.length === N — we detect that and
+              // still render them but skip the return leg.
               const legs = route.legDistancesMeters;
               const legDurs = route.legDurationsSeconds;
-              const hasAnchorLegs =
+              const hasLinearLegs =
+                legs !== null &&
+                legs.length === stops.length - 1 &&
+                stops.length >= 2;
+              const hasLegacyLoopLegs =
                 legs !== null &&
                 legs.length === stops.length &&
                 stops.length >= 2;
+              const hasLegs = hasLinearLegs || hasLegacyLoopLegs;
 
               return (
                 <ol className="flex flex-col gap-2.5">
@@ -238,24 +235,17 @@ export default async function RouteDetailPage({ params }: PageProps) {
                       key={stop.id}
                       stop={stop}
                       index={i + 1}
-                      isStart={hasAnchorLegs && i === 0}
+                      isStart={hasLegs && i === 0}
+                      isEnd={hasLegs && i === stops.length - 1}
                       legInMeters={
-                        hasAnchorLegs && i > 0 ? legs![i - 1] : undefined
+                        hasLegs && i > 0 ? legs![i - 1] : undefined
                       }
                       legInSeconds={
-                        hasAnchorLegs && i > 0
-                          ? legDurs?.[i - 1]
-                          : undefined
+                        hasLegs && i > 0 ? legDurs?.[i - 1] : undefined
                       }
                       legInLabel="From Previous"
                     />
                   ))}
-                  {hasAnchorLegs && (
-                    <ReturnLegRow
-                      meters={legs![stops.length - 1]}
-                      seconds={legDurs?.[stops.length - 1] ?? 0}
-                    />
-                  )}
                 </ol>
               );
             })()
@@ -270,7 +260,7 @@ export default async function RouteDetailPage({ params }: PageProps) {
         </section>
 
         {/* ============================================================
-            Vote + Delete stubs — Phase 6b wiring pending
+            Vote + Delete actions
             ============================================================ */}
         <section
           className="animate-rise mt-10 flex flex-col gap-3"
@@ -278,45 +268,43 @@ export default async function RouteDetailPage({ params }: PageProps) {
         >
           <div className="font-mono flex items-center gap-2 text-[10px] tracking-[0.22em] text-ink-soft uppercase">
             <span aria-hidden className="h-[2px] w-6 bg-ink" />
-            <span>
-              Current Votes:{' '}
-              <span className="text-sauce">{route.voteCount}</span>
-            </span>
+            <span>Cast Your Vote</span>
             <span aria-hidden className="h-[2px] flex-1 bg-ink" />
           </div>
 
-          <button
-            type="button"
-            disabled
-            aria-disabled
-            title="Voting lands in Phase 6b"
-            className="font-mono flex cursor-not-allowed items-center justify-between border-2 border-dashed border-ink-faded bg-cream-deep/40 px-5 py-4 text-sm font-bold tracking-[0.18em] text-ink-faded uppercase sm:text-base"
-          >
-            <span>Vote for this Route</span>
-            <span
-              aria-hidden
-              className="font-mono text-[9px] tracking-[0.2em] text-ink-faded/80"
-            >
-              Phase 6b
-            </span>
-          </button>
+          <VoteButton
+            routeId={route.id}
+            initialVoted={hasUserVoted}
+            initialVoteCount={route.voteCount}
+          />
 
-          {isCreator && (
-            <button
-              type="button"
-              disabled
-              aria-disabled
-              title="Deleting routes lands in Phase 6b"
-              className="font-mono flex cursor-not-allowed items-center justify-between border-2 border-dashed border-sauce/50 bg-cream px-5 py-4 text-sm font-bold tracking-[0.18em] text-sauce/70 uppercase sm:text-base"
-            >
-              <span>Delete Route</span>
-              <span
-                aria-hidden
-                className="font-mono text-[9px] tracking-[0.2em] text-sauce/50"
+          {canEdit && (
+            <>
+              <div className="font-mono mt-4 flex items-center gap-2 text-[10px] tracking-[0.22em] text-ink-soft uppercase">
+                <span aria-hidden className="h-[2px] w-6 bg-ink" />
+                <span>Editor Actions</span>
+                <span aria-hidden className="h-[2px] flex-1 bg-ink" />
+              </div>
+              <Link
+                href={`/routes/${route.id}/edit`}
+                className="group font-mono flex items-center justify-between border-2 border-ink bg-cream px-5 py-4 text-sm font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:border-sauce hover:bg-sauce hover:text-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:text-base"
               >
-                Phase 6b &middot; Creator Only
-              </span>
-            </button>
+                <span
+                  aria-hidden
+                  className="text-[13px] leading-none transition-transform group-hover:-rotate-12"
+                >
+                  &#x270E;
+                </span>
+                <span>Edit Route</span>
+                <span
+                  aria-hidden
+                  className="transition-transform group-hover:translate-x-1"
+                >
+                  &rarr;
+                </span>
+              </Link>
+              {isCreator && <DeleteRouteForm routeId={route.id} />}
+            </>
           )}
         </section>
 
@@ -377,8 +365,10 @@ function Stat({
 type StopCardProps = {
   stop: Restaurant;
   index: number;
-  /** True for stop 01 — shows a "START HERE" badge instead of a leg-in. */
+  /** True for stop 01 — shows a "START" badge instead of a leg-in. */
   isStart?: boolean;
+  /** True for the last stop — shows a "FINISH" badge. */
+  isEnd?: boolean;
   /** Distance from the previous stop to this stop, in meters. */
   legInMeters?: number;
   /** Duration for the same leg, in seconds. */
@@ -391,6 +381,7 @@ function StopCard({
   stop,
   index,
   isStart,
+  isEnd,
   legInMeters,
   legInSeconds,
   legInLabel,
@@ -398,20 +389,28 @@ function StopCard({
   const hasLegIn = !isStart && typeof legInMeters === 'number';
   return (
     <li className="flex flex-col gap-2 border-[1.5px] border-ink bg-cream px-4 py-3 shadow-[3px_3px_0_rgba(22,20,19,0.08)]">
-      {/* Start-here badge: stop 01 in the new "first stop is the
-          anchor" semantics has no arrival leg — it's where you begin.
-          Marked with a sauce-red star so the starting point is visible
-          at a glance when scrolling the list. */}
       {isStart && (
         <div className="font-mono flex items-center gap-2 border-b border-sauce/50 pb-2 text-[9px] tracking-[0.22em] uppercase">
           <span aria-hidden className="text-sauce">
             &#x2605;
           </span>
-          <span className="font-bold text-sauce">Start Here</span>
+          <span className="font-bold text-sauce">Start</span>
           <span aria-hidden className="text-ink-faded/60">
             &middot;
           </span>
-          <span className="text-ink-soft">Anchor of the loop</span>
+          <span className="text-ink-soft">The crawl begins here</span>
+        </div>
+      )}
+      {isEnd && !isStart && (
+        <div className="font-mono flex items-center gap-2 border-b border-ink/30 pb-2 text-[9px] tracking-[0.22em] uppercase">
+          <span aria-hidden className="text-ink-soft">
+            &#x2691;
+          </span>
+          <span className="font-bold text-ink-soft">Finish</span>
+          <span aria-hidden className="text-ink-faded/60">
+            &middot;
+          </span>
+          <span className="text-ink-faded">Last stop &mdash; disperse!</span>
         </div>
       )}
 
@@ -480,40 +479,6 @@ function StopCard({
           </span>
         </a>
       </div>
-    </li>
-  );
-}
-
-/* =========================================================================
-   ReturnLegRow — terminal row showing the return-to-origin leg
-   ========================================================================= */
-
-function ReturnLegRow({
-  meters,
-  seconds,
-}: {
-  meters: number;
-  seconds: number;
-}) {
-  return (
-    <li
-      aria-label={`Return to the starting stop: ${formatMilesShort(meters)} miles, ${formatMinutesShort(seconds)}`}
-      className="font-mono flex items-center gap-2 border-[1.5px] border-dashed border-ink/50 bg-cream-deep/30 px-4 py-2 text-[9px] tracking-[0.18em] text-ink-soft uppercase"
-    >
-      <span aria-hidden className="text-sauce">
-        &#x21BA;
-      </span>
-      <span className="font-bold text-ink-soft">Back to Start</span>
-      <span aria-hidden className="text-ink-faded/60">
-        &middot;
-      </span>
-      <span className="font-bold text-ink">
-        {formatMilesShort(meters)} mi
-      </span>
-      <span aria-hidden className="text-ink-faded/60">
-        &middot;
-      </span>
-      <span className="text-ink-soft">{formatMinutesShort(seconds)}</span>
     </li>
   );
 }

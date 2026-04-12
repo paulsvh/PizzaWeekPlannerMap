@@ -95,9 +95,9 @@ function MapViewInner({
   /**
    * User's custom stop order. Null means "use Google's optimization
    * with the first starred restaurant as the fixed anchor". When the
-   * user clicks an up/down arrow in the plot sheet, we seed this
-   * from the current result and then apply the swap. Subsequent
-   * starring/unstarring prunes and extends the manual order in-place.
+   * user drags to reorder in the plot sheet, we store the full new
+   * array here. Subsequent starring/unstarring prunes and extends
+   * the manual order in-place.
    */
   const [manualOrder, setManualOrder] = useState<Restaurant[] | null>(null);
   const { starred, isStarred } = useStars();
@@ -166,28 +166,13 @@ function MapViewInner({
 
   /* ---------- reorder handlers ---------- */
 
-  // Seed the manual order from whatever is currently displayed (the
-  // hook's result if Google was optimizing, or the existing manual
-  // order) and swap the two adjacent items.
-  const handleMoveUp = (index: number) => {
-    if (index === 0) return;
-    setManualOrder((prev) => {
-      const base = prev ?? plotResult?.orderedStops ?? [];
-      if (index >= base.length) return prev;
-      const next = [...base];
-      [next[index - 1], next[index]] = [next[index], next[index - 1]];
-      return next;
-    });
-  };
-
-  const handleMoveDown = (index: number) => {
-    setManualOrder((prev) => {
-      const base = prev ?? plotResult?.orderedStops ?? [];
-      if (index >= base.length - 1) return prev ?? base;
-      const next = [...base];
-      [next[index], next[index + 1]] = [next[index + 1], next[index]];
-      return next;
-    });
+  // Single reorder handler used by the drag-and-drop list in
+  // PlotModeSheet. The sheet computes the new order using dnd-kit's
+  // arrayMove utility (or any other reordering primitive) and passes
+  // the full new array here. We just store it as the manual order.
+  // The hook will recompute the route on the next render.
+  const handleReorder = (newOrder: Restaurant[]) => {
+    setManualOrder(newOrder);
   };
 
   const handleResetOrder = () => {
@@ -265,8 +250,7 @@ function MapViewInner({
         starredCount={starredRestaurants.length}
         displayStops={displayStops}
         isManualOrder={manualOrder !== null}
-        onMoveUp={handleMoveUp}
-        onMoveDown={handleMoveDown}
+        onReorder={handleReorder}
         onResetOrder={handleResetOrder}
       />
     </div>

@@ -1,8 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { Drawer } from 'vaul';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { Restaurant } from '@/lib/types';
 import type { PlotStatus, PlotResult } from '@/lib/maps/use-plot-route';
 import { MAX_WAYPOINTS } from '@/lib/maps/use-plot-route';
@@ -25,8 +49,8 @@ type PlotModeSheetProps = {
   displayStops: Restaurant[];
   /** True when the user has manually reordered (controls the Reset link). */
   isManualOrder: boolean;
-  onMoveUp: (index: number) => void;
-  onMoveDown: (index: number) => void;
+  /** Called when the user drags-and-drops to reorder. */
+  onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
 };
 
@@ -47,8 +71,7 @@ export function PlotModeSheet({
   starredCount,
   displayStops,
   isManualOrder,
-  onMoveUp,
-  onMoveDown,
+  onReorder,
   onResetOrder,
 }: PlotModeSheetProps) {
   // Track whether we still have meaningful content to render so the
@@ -100,8 +123,7 @@ export function PlotModeSheet({
               starredCount={starredCount}
               displayStops={displayStops}
               isManualOrder={isManualOrder}
-              onMoveUp={onMoveUp}
-              onMoveDown={onMoveDown}
+              onReorder={onReorder}
               onResetOrder={onResetOrder}
               onExit={onExit}
             />
@@ -130,8 +152,7 @@ type PlotContentProps = {
   starredCount: number;
   displayStops: Restaurant[];
   isManualOrder: boolean;
-  onMoveUp: (index: number) => void;
-  onMoveDown: (index: number) => void;
+  onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
   onExit: () => void;
 };
@@ -143,8 +164,7 @@ function PlotContent({
   starredCount,
   displayStops,
   isManualOrder,
-  onMoveUp,
-  onMoveDown,
+  onReorder,
   onResetOrder,
   onExit,
 }: PlotContentProps) {
@@ -159,8 +179,7 @@ function PlotContent({
         stops={displayStops}
         isManualOrder={isManualOrder}
         isRecomputing={status === 'computing'}
-        onMoveUp={onMoveUp}
-        onMoveDown={onMoveDown}
+        onReorder={onReorder}
         onResetOrder={onResetOrder}
         onExit={onExit}
       />
@@ -190,8 +209,7 @@ type ReadyContentProps = {
   stops: Restaurant[];
   isManualOrder: boolean;
   isRecomputing: boolean;
-  onMoveUp: (index: number) => void;
-  onMoveDown: (index: number) => void;
+  onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
   onExit: () => void;
 };
@@ -206,12 +224,55 @@ function ReadyContent({
   stops,
   isManualOrder,
   isRecomputing,
-  onMoveUp,
-  onMoveDown,
+  onReorder,
   onResetOrder,
   onExit,
 }: ReadyContentProps) {
   const router = useRouter();
+
+  // dnd-kit sensors. PointerSensor handles mouse with an 8px
+  // movement threshold so a click doesn't accidentally start a
+  // drag. TouchSensor handles touch with a 200ms hold + 8px
+  // tolerance so users can scroll the list with their finger
+  // without accidentally lifting a card. KeyboardSensor adds
+  // accessible keyboard reordering.
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  // Stable list of stop IDs for SortableContext.
+  const stopIds = useMemo(() => stops.map((s) => s.id), [stops]);
+
+  // Whether the legDistances on `result` actually correspond to the
+  // currently-displayed `stops`. When the user drags, displayStops
+  // updates immediately but the hook's result is stale until the
+  // ~500ms recompute completes. During that window, leg distances
+  // would be indexed against the wrong stops — show placeholder
+  // dividers instead of wrong values.
+  const legsInSync = useMemo(() => {
+    if (stops.length !== result.orderedStops.length) return false;
+    for (let i = 0; i < stops.length; i++) {
+      if (stops[i].id !== result.orderedStops[i].id) return false;
+    }
+    return true;
+  }, [stops, result.orderedStops]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = stops.findIndex((s) => s.id === active.id);
+    const newIndex = stops.findIndex((s) => s.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    onReorder(arrayMove(stops, oldIndex, newIndex));
+  };
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
   const miles = result.totalDistanceMeters / 1609.344;
   const durationText = formatDuration(result.totalDurationSeconds);
@@ -292,7 +353,7 @@ function ReadyContent({
             <span className="text-sauce italic">Crawl</span>
           </Drawer.Title>
           <Drawer.Description className="font-mono text-[10px] tracking-[0.2em] text-ink-soft uppercase">
-            {stops.length} stops &middot; biking &middot; loops back to start
+            {stops.length} stops &middot; biking &middot; start to finish
           </Drawer.Description>
         </section>
 
@@ -343,22 +404,49 @@ function ReadyContent({
 
           <p className="font-mono text-[9px] tracking-[0.15em] text-ink-soft/70 uppercase italic">
             {isManualOrder
-              ? 'Custom order. Drag arrows to rearrange stops.'
-              : 'Google optimized. Tap arrows to customize the order.'}
+              ? 'Custom order. Press and drag to rearrange.'
+              : 'Google optimized. Press and drag any stop to customize.'}
           </p>
 
-          <ol className="flex flex-col gap-2">
-            {stops.map((stop, i) => (
-              <StopCard
-                key={stop.id}
-                stop={stop}
-                index={i}
-                totalStops={stops.length}
-                onMoveUp={onMoveUp}
-                onMoveDown={onMoveDown}
-              />
-            ))}
-          </ol>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={stopIds}
+              strategy={verticalListSortingStrategy}
+            >
+              <ol className="flex flex-col gap-1">
+                {stops.map((stop, i) => {
+                  const showLegBefore = i > 0;
+                  const legMeters = result.legDistancesMeters[i - 1];
+                  const legSeconds = result.legDurationsSeconds[i - 1];
+                  return (
+                    <Fragment key={stop.id}>
+                      {showLegBefore &&
+                        (legsInSync &&
+                        typeof legMeters === 'number' &&
+                        typeof legSeconds === 'number' ? (
+                          <LegDivider
+                            meters={legMeters}
+                            seconds={legSeconds}
+                          />
+                        ) : (
+                          <LegDividerPlaceholder />
+                        ))}
+                      <SortableStopCard
+                        stop={stop}
+                        index={i}
+                        totalStops={stops.length}
+                      />
+                    </Fragment>
+                  );
+                })}
+                {/* No return leg — the route ends at the last stop. */}
+              </ol>
+            </SortableContext>
+          </DndContext>
         </section>
 
         {/* Save + Exit actions */}
@@ -458,30 +546,54 @@ function Stat({
   );
 }
 
-function StopCard({
-  stop,
-  index,
-  totalStops,
-  onMoveUp,
-  onMoveDown,
-}: {
+/* =========================================================================
+   SortableStopCard — single stop with drag-and-drop wired up via dnd-kit
+   ========================================================================= */
+
+type SortableStopCardProps = {
   stop: Restaurant;
   index: number;
   totalStops: number;
-  onMoveUp: (index: number) => void;
-  onMoveDown: (index: number) => void;
-}) {
-  const isFirst = index === 0;
-  const isLast = index === totalStops - 1;
+};
 
-  // Stop 01 is the anchor — route starts AND ends there. Show a
-  // thin sauce-red start border on the left edge so it's visually
-  // distinct from the rest of the stops as the user reorders.
+function SortableStopCard({
+  stop,
+  index,
+  totalStops,
+}: SortableStopCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: stop.id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 20 : undefined,
+  };
+
+  const isFirst = index === 0;
+
   return (
     <li
-      className={`flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5 ${
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      // touch-none prevents the browser from interpreting touch
+      // gestures as scroll/zoom while a drag is active. select-none
+      // prevents text selection during the drag.
+      // cursor-grab + active:cursor-grabbing communicates the
+      // affordance on desktop.
+      className={`group flex touch-none cursor-grab items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5 select-none active:cursor-grabbing ${
         isFirst ? 'border-l-[5px] border-l-sauce' : ''
-      }`}
+      } ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : ''}`}
+      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}. Press and drag to reorder.`}
     >
       <span
         aria-hidden
@@ -493,7 +605,7 @@ function StopCard({
         {isFirst && (
           <p className="font-mono mb-0.5 flex items-center gap-1 text-[8px] font-bold tracking-[0.22em] text-sauce uppercase">
             <span aria-hidden>&#x2605;</span>
-            <span>Start &middot; End</span>
+            <span>Start</span>
           </p>
         )}
         <p className="font-display text-[15px] leading-tight font-bold text-ink sm:text-base">
@@ -506,28 +618,94 @@ function StopCard({
           ) : null}
         </p>
       </div>
-      <div className="flex shrink-0 flex-col gap-1 self-center">
-        <button
-          type="button"
-          onClick={() => onMoveUp(index)}
-          disabled={isFirst}
-          aria-label={`Move ${stop.pizzaName} up`}
-          className="font-mono flex size-8 items-center justify-center border border-ink bg-cream text-[13px] leading-none text-ink transition-colors hover:bg-mustard disabled:cursor-not-allowed disabled:border-ink/30 disabled:bg-cream-deep/40 disabled:text-ink-faded/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce"
-        >
-          &uarr;
-        </button>
-        <button
-          type="button"
-          onClick={() => onMoveDown(index)}
-          disabled={isLast}
-          aria-label={`Move ${stop.pizzaName} down`}
-          className="font-mono flex size-8 items-center justify-center border border-ink bg-cream text-[13px] leading-none text-ink transition-colors hover:bg-mustard disabled:cursor-not-allowed disabled:border-ink/30 disabled:bg-cream-deep/40 disabled:text-ink-faded/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce"
-        >
-          &darr;
-        </button>
-      </div>
+      {/* Drag-handle hint glyph on the right. The whole card is
+          draggable, but the glyph signals the affordance. */}
+      <span
+        aria-hidden
+        className="font-mono flex shrink-0 items-center self-center text-[14px] leading-none text-ink-faded transition-colors group-hover:text-ink-soft"
+      >
+        &#x2630;
+      </span>
     </li>
   );
+}
+
+/* =========================================================================
+   LegDivider — between-card mono caption showing leg distance + duration
+   ========================================================================= */
+
+function LegDivider({
+  meters,
+  seconds,
+}: {
+  meters: number;
+  seconds: number;
+}) {
+  return (
+    <li
+      aria-hidden
+      className="flex items-center gap-2 px-1 py-1.5"
+    >
+      <span className="h-[1px] flex-1 bg-ink/30" />
+      <span className="font-mono flex items-center gap-1.5 text-[9px] tracking-[0.18em] text-ink-soft uppercase">
+        <span aria-hidden className="text-sauce">
+          &darr;
+        </span>
+        <span className="font-bold text-ink">
+          {formatMilesShort(meters)} mi
+        </span>
+        <span aria-hidden className="text-ink-faded/60">
+          &middot;
+        </span>
+        <span>{formatMinutesShort(seconds)}</span>
+      </span>
+      <span className="h-[1px] flex-1 bg-ink/30" />
+    </li>
+  );
+}
+
+/* =========================================================================
+   LegDividerPlaceholder — shown when displayStops doesn't yet match
+   result.orderedStops (i.e. user just dragged, recompute in flight).
+   Same height as the real divider so the list doesn't shift.
+   ========================================================================= */
+
+function LegDividerPlaceholder({ isReturn = false }: { isReturn?: boolean }) {
+  return (
+    <li
+      aria-hidden
+      className={`flex items-center gap-2 px-1 py-1.5 ${
+        isReturn ? 'mt-1' : ''
+      }`}
+    >
+      <span className="h-[1px] flex-1 bg-ink/15" />
+      <span className="font-mono text-[9px] tracking-[0.2em] text-ink-faded/60 uppercase italic">
+        Recomputing&hellip;
+      </span>
+      <span className="h-[1px] flex-1 bg-ink/15" />
+    </li>
+  );
+}
+
+/* =========================================================================
+   formatMilesShort + formatMinutesShort — local copies of the helpers
+   from the route detail page, kept inline to avoid a shared util module
+   for two functions.
+   ========================================================================= */
+
+function formatMilesShort(meters: number): string {
+  const miles = meters / 1609.344;
+  if (miles < 0.1) return '<0.1';
+  return miles.toFixed(1);
+}
+
+function formatMinutesShort(seconds: number): string {
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h${mins}`;
 }
 
 /* =========================================================================

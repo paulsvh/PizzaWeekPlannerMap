@@ -8,22 +8,24 @@ import { MAX_WAYPOINTS } from '@/lib/maps/constants';
 /**
  * usePlotRoute — the brain of plot mode.
  *
- * Given the current starred restaurants and an origin (user's GPS or
- * fallback), calls the Google Directions Service with
- * `optimizeWaypoints: true` + `travelMode: BICYCLING` and produces a
- * polyline path + total distance/duration + the stops reordered by
- * Google's optimizer. The route loops back to the origin (best UX
- * for a pizza crawl — you start and end at the same place).
+ * Given the current stops, calls the Google Directions Service with
+ * `travelMode: BICYCLING` and produces a polyline path + total
+ * distance/duration + the stops reordered by Google's optimizer.
+ *
+ * LINEAR route semantics: the route starts at waypoints[0] and ends
+ * at waypoints[N-1] (no loop back). When `optimize` is true, Google
+ * reorders the MIDDLE stops (everything between first and last) for
+ * the shortest biking route; the first and last stops stay pinned.
  *
  * State machine:
  *
  *   idle          → plot mode is off
  *   loading       → routes library is loading
  *   too-few       → need at least 2 starred restaurants
- *   too-many      → more than MAX_WAYPOINTS middle stops after the anchor
+ *   too-many      → more than MAX_WAYPOINTS middle stops
  *   computing     → directions request in flight (debounced ~350ms)
  *   ready         → result is populated
- *   error         → directions API returned a non-OK status
+ *   error         ��� directions API returned a non-OK status
  *
  * Debouncing + stale-response cancellation: every request bumps a
  * ref counter. When the callback fires, it compares its ID to the
@@ -51,43 +53,43 @@ export type PlotStatus =
 
 export type PlotResult = {
   /**
-   * All stops in final order, with orderedStops[0] being the anchor
-   * (the first restaurant in the user's list). The route is:
-   * orderedStops[0] → orderedStops[1] → ... → orderedStops[N-1] →
-   * orderedStops[0] (loop back).
+   * All stops in final order. orderedStops[0] is the starting point,
+   * orderedStops[N-1] is the ending point. The route does NOT loop
+   * back — everyone disperses at the last stop.
    */
   orderedStops: Restaurant[];
   /** LatLng array for rendering the polyline on the map. */
   path: google.maps.LatLngLiteral[];
-  /** Encoded polyline string — used by Phase 6 for persistence. */
+  /** Encoded polyline string — persisted when saving the route. */
   encodedPolyline: string;
   totalDistanceMeters: number;
   totalDurationSeconds: number;
   /**
-   * Per-leg distances in meters. Length === orderedStops.length.
+   * Per-leg distances in meters. Length === orderedStops.length - 1.
    * legs[0] = stop0→stop1, legs[1] = stop1→stop2, ...,
-   * legs[N-1] = stopN-1→stop0 (the return leg that closes the loop).
+   * legs[N-2] = stopN-2→stopN-1.
    */
   legDistancesMeters: number[];
   /** Per-leg durations in seconds, same length as legDistancesMeters. */
   legDurationsSeconds: number[];
-  /** Anchor LatLng (always equals orderedStops[0]'s coords). */
+  /** Origin LatLng (always equals orderedStops[0]'s coords). */
   origin: google.maps.LatLngLiteral;
 };
 
 type UsePlotRouteInput = {
   enabled: boolean;
   /**
-   * The full list of stops to plot. CONVENTION: `waypoints[0]` is the
-   * anchor — the route starts there, visits the rest (optionally
-   * reordered by Google when `optimize` is true), and loops back to
-   * `waypoints[0]`. The hook never reorders the anchor.
+   * The full list of stops to plot. `waypoints[0]` is the starting
+   * point (origin) and `waypoints[N-1]` is the ending point
+   * (destination). When `optimize` is true, Google reorders the
+   * MIDDLE stops for the shortest biking route but pins the first
+   * and last. When false, the order is respected exactly.
    */
   waypoints: Restaurant[];
   /**
-   * When true, Google reorders the MIDDLE stops (everything except
-   * `waypoints[0]`) for the shortest biking route. The anchor stays
-   * fixed. When false, Google respects the order exactly.
+   * When true, Google reorders the middle stops (everything between
+   * first and last) for the shortest biking route. First and last
+   * stay fixed. When false, Google respects the order exactly.
    */
   optimize: boolean;
 };
@@ -125,12 +127,14 @@ export function usePlotRoute({
       return;
     }
 
-    // The first stop is the anchor; the rest go to the Directions
-    // API as "middle" waypoints. Google's waypoint cap applies to
-    // that middle section, which is why we allow one more total stop
-    // than MAX_WAYPOINTS (the anchor doesn't count).
-    const anchor = waypoints[0];
-    const middleStops = waypoints.slice(1);
+    // First stop = origin, last stop = destination, everything in
+    // between = middle waypoints that Google can reorder when
+    // optimizing. Google's waypoint cap applies to that middle
+    // section only (origin and destination don't count).
+    const first = waypoints[0];
+    const last = waypoints[waypoints.length - 1];
+    const middleStops =
+      waypoints.length > 2 ? waypoints.slice(1, -1) : [];
 
     if (middleStops.length > MAX_WAYPOINTS) {
       setStatus('too-many');
@@ -149,15 +153,19 @@ export function usePlotRoute({
 
     const timer = setTimeout(() => {
       const service = new routesLib.DirectionsService();
-      const anchorLatLng: google.maps.LatLngLiteral = {
-        lat: anchor.lat,
-        lng: anchor.lng,
+      const originLatLng: google.maps.LatLngLiteral = {
+        lat: first.lat,
+        lng: first.lng,
+      };
+      const destinationLatLng: google.maps.LatLngLiteral = {
+        lat: last.lat,
+        lng: last.lng,
       };
 
       service.route(
         {
-          origin: anchorLatLng,
-          destination: anchorLatLng, // loop back to the anchor
+          origin: originLatLng,
+          destination: destinationLatLng,
           waypoints: middleStops.map((w) => ({
             location: { lat: w.lat, lng: w.lng },
             stopover: true,
@@ -172,10 +180,6 @@ export function usePlotRoute({
 
           if (requestStatus !== 'OK' || !response) {
             setStatus('error');
-            // Keep the previous `result` around so the UI can still
-            // show the last-known stops while the user is fixing the
-            // error — we only clear on explicit state changes, not on
-            // a single failed recompute.
             setError(friendlyDirectionsError(String(requestStatus)));
             return;
           }
@@ -188,19 +192,17 @@ export function usePlotRoute({
           }
 
           // Reorder the middle stops per Google's waypoint_order when
-          // optimizing, or keep them as-passed when not. Then prepend
-          // the fixed anchor so orderedStops starts with the first
-          // user-selected stop.
+          // optimizing, or keep them as-passed when not. Then sandwich
+          // between the fixed first and last stops.
           const orderedMiddle = optimize
             ? (route.waypoint_order ?? [])
                 .map((i) => middleStops[i])
                 .filter((r): r is Restaurant => Boolean(r))
             : middleStops.slice();
-          const orderedStops = [anchor, ...orderedMiddle];
+          const orderedStops = [first, ...orderedMiddle, last];
 
-          // Legs are in route-order. For N stops (including anchor),
-          // Google returns N legs: anchor→stop1, stop1→stop2, ...,
-          // stopN-1→anchor. So legs.length === orderedStops.length.
+          // Legs: for N stops in a linear route, Google returns N-1
+          // legs. legs[0] = first→stop1, ..., legs[N-2] = stopN-2→last.
           const legDistancesMeters = route.legs.map(
             (leg) => leg.distance?.value ?? 0,
           );
@@ -233,7 +235,7 @@ export function usePlotRoute({
             totalDurationSeconds,
             legDistancesMeters,
             legDurationsSeconds,
-            origin: anchorLatLng,
+            origin: originLatLng,
           });
           setStatus('ready');
           setError(null);
