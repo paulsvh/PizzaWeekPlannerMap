@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 
-type MapHeaderProps = { displayName: string };
+type MapHeaderProps = { displayName: string; isAdmin: boolean };
 
 /**
  * The floating running-head of the paper — pinned to the top of the
@@ -11,7 +11,7 @@ type MapHeaderProps = { displayName: string };
  * tile grid peeks through, heavy ink underline, masthead condensed
  * into a single strip.
  */
-export function MapHeader({ displayName }: MapHeaderProps) {
+export function MapHeader({ displayName, isAdmin }: MapHeaderProps) {
   return (
     <header
       className="fixed top-0 right-0 left-0 z-40 border-b-2 border-ink bg-cream/90 backdrop-blur-sm"
@@ -45,6 +45,15 @@ export function MapHeader({ displayName }: MapHeaderProps) {
           >
             Routes
           </Link>
+
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="font-mono border-2 border-ink bg-cream px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:border-basil hover:bg-basil hover:text-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2 sm:text-[11px]"
+            >
+              Admin
+            </Link>
+          )}
 
           <form action={logout}>
             <button

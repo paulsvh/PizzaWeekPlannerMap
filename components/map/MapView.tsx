@@ -22,6 +22,7 @@ type MapViewProps = {
   displayName: string;
   mapsApiKey: string;
   initialStarredIds: string[];
+  isAdmin: boolean;
 };
 
 type MapViewInnerProps = Omit<MapViewProps, 'initialStarredIds' | 'mapsApiKey'>;
@@ -65,6 +66,7 @@ export function MapView({
   displayName,
   mapsApiKey,
   initialStarredIds,
+  isAdmin,
 }: MapViewProps) {
   if (!mapsApiKey) {
     return <MissingMapKeyNotice displayName={displayName} />;
@@ -80,6 +82,7 @@ export function MapView({
         <MapViewInner
           restaurants={restaurants}
           displayName={displayName}
+          isAdmin={isAdmin}
         />
       </APIProvider>
     </StarsProvider>
@@ -89,6 +92,7 @@ export function MapView({
 function MapViewInner({
   restaurants,
   displayName,
+  isAdmin,
 }: MapViewInnerProps) {
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [plotMode, setPlotMode] = useState(false);
@@ -232,7 +236,7 @@ function MapViewInner({
         )}
       </Map>
 
-      <MapHeader displayName={displayName} />
+      <MapHeader displayName={displayName} isAdmin={isAdmin} />
 
       <PlotModeFab active={plotMode} onToggle={togglePlotMode} />
 

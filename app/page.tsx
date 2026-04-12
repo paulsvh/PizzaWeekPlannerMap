@@ -28,6 +28,7 @@ export default async function HomePage() {
       displayName={session.displayName}
       mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY ?? ''}
       initialStarredIds={starredIds}
+      isAdmin={session.role === 'admin'}
     />
   );
 }
