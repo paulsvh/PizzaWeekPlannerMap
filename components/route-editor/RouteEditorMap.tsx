@@ -14,6 +14,8 @@ type RouteEditorMapProps = {
    * numbered markers with no polyline overlaid.
    */
   path: google.maps.LatLngLiteral[];
+  /** User's home location for home pin on the map. */
+  homeLocation?: { lat: number; lng: number; formattedAddress: string } | null;
 };
 
 /**
@@ -29,7 +31,7 @@ type RouteEditorMapProps = {
  * matching the framed-photograph aesthetic of the read-only
  * `<RouteDetailMap>` on the detail page.
  */
-export function RouteEditorMap({ stops, path }: RouteEditorMapProps) {
+export function RouteEditorMap({ stops, path, homeLocation }: RouteEditorMapProps) {
   // Intentional: we compute bounds from the FIRST set of stops and
   // then never recompute (hence the empty dep array). Editing a
   // route shouldn't re-center the camera on every tap.
@@ -51,6 +53,22 @@ export function RouteEditorMap({ stops, path }: RouteEditorMapProps) {
       className="h-full w-full"
     >
       {path.length > 0 && <RoutePolyline path={path} />}
+
+      {/* Home pin */}
+      {homeLocation && (
+        <AdvancedMarker
+          position={{ lat: homeLocation.lat, lng: homeLocation.lng }}
+          title={`Home: ${homeLocation.formattedAddress}`}
+        >
+          <div
+            role="img"
+            aria-label="Home"
+            className="font-mono flex size-7 items-center justify-center rounded-full border-[2px] border-dashed border-ink bg-mustard text-[12px] text-ink shadow-[0_3px_0_rgba(22,20,19,0.55),0_4px_10px_rgba(22,20,19,0.3)]"
+          >
+            &#x2302;
+          </div>
+        </AdvancedMarker>
+      )}
 
       {stops.map((stop, i) => (
         <AdvancedMarker

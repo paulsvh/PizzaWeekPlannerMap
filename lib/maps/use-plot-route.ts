@@ -82,19 +82,21 @@ export type PlotResult = {
 type UsePlotRouteInput = {
   enabled: boolean;
   /**
-   * The full list of stops to plot. `waypoints[0]` is the starting
-   * point (origin) and `waypoints[N-1]` is the ending point
-   * (destination). When `optimize` is true, Google reorders the
-   * MIDDLE stops for the shortest biking route but pins the first
-   * and last. When false, the order is respected exactly.
+   * The full list of stops to plot in their current order.
    */
   waypoints: Restaurant[];
   /**
-   * When true, Google reorders the middle stops (everything between
-   * first and last) for the shortest biking route. First and last
-   * stay fixed. When false, Google respects the order exactly.
+   * When true, free (non-anchored) middle stops are reordered by
+   * Google for the shortest biking route. Anchored stops stay at
+   * their positions. When false, the order is respected exactly.
    */
   optimize: boolean;
+  /**
+   * IDs of stops that should not move during optimization. Anchored
+   * stops keep their position in the waypoints array; only free
+   * stops are sent to Google for reordering.
+   */
+  anchoredIds?: ReadonlySet<string>;
 };
 
 type UsePlotRouteOutput = {
@@ -107,6 +109,7 @@ export function usePlotRoute({
   enabled,
   waypoints,
   optimize,
+  anchoredIds,
 }: UsePlotRouteInput): UsePlotRouteOutput {
   const routesLib = useMapsLibrary('routes');
   const [status, setStatus] = useState<PlotStatus>('idle');
@@ -130,21 +133,45 @@ export function usePlotRoute({
       return;
     }
 
-    // Pick endpoints. When optimizing, find the two geographically
-    // farthest-apart stops ("diameter pair") so the route runs
-    // linearly across the cluster. When the user has set a manual
-    // order, respect their first/last exactly.
+    // Pick endpoints and middle stops. When optimizing with anchors,
+    // anchored stops stay at their indices and only free stops are
+    // sent to Google for reordering.
     let first: Restaurant;
     let last: Restaurant;
     let middleStops: Restaurant[];
+    // Anchored middle stops + their original indices (relative to
+    // the middle array). Used to reinsert them after Google returns.
+    let anchoredMiddle: { index: number; stop: Restaurant }[] = [];
 
     if (optimize && waypoints.length >= 2) {
-      const [startIdx, endIdx] = findDiameterPair(waypoints);
-      first = waypoints[startIdx];
-      last = waypoints[endIdx];
-      middleStops = waypoints.filter(
-        (_, i) => i !== startIdx && i !== endIdx,
+      const anchored = anchoredIds ?? new Set<string>();
+      const firstAnchored = anchored.has(waypoints[0].id);
+      const lastAnchored = anchored.has(waypoints[waypoints.length - 1].id);
+
+      // Pick origin: use first stop if anchored, else diameter endpoint
+      if (firstAnchored) {
+        first = waypoints[0];
+      } else {
+        const [startIdx] = findDiameterPair(waypoints);
+        first = waypoints[startIdx];
+      }
+
+      // Pick destination: use last stop if anchored, else diameter endpoint
+      if (lastAnchored) {
+        last = waypoints[waypoints.length - 1];
+      } else {
+        const [, endIdx] = findDiameterPair(waypoints);
+        last = waypoints[endIdx];
+      }
+
+      // Build middle stops, separating anchored from free
+      const allMiddle = waypoints.filter(
+        (w) => w.id !== first.id && w.id !== last.id,
       );
+      anchoredMiddle = allMiddle
+        .map((stop, i) => ({ index: i, stop }))
+        .filter((entry) => anchored.has(entry.stop.id));
+      middleStops = allMiddle.filter((w) => !anchored.has(w.id));
     } else {
       first = waypoints[0];
       last = waypoints[waypoints.length - 1];
@@ -210,11 +237,24 @@ export function usePlotRoute({
           // Reorder the middle stops per Google's waypoint_order when
           // optimizing, or keep them as-passed when not. Then sandwich
           // between the fixed first and last stops.
-          const orderedMiddle = optimize
-            ? (route.waypoint_order ?? [])
-                .map((i) => middleStops[i])
-                .filter((r): r is Restaurant => Boolean(r))
-            : middleStops.slice();
+          let orderedMiddle: Restaurant[];
+          if (optimize) {
+            // Google only saw the free stops — reorder them
+            const optimizedFree = (route.waypoint_order ?? [])
+              .map((i) => middleStops[i])
+              .filter((r): r is Restaurant => Boolean(r));
+            // Reinsert anchored middle stops at their original indices
+            orderedMiddle = [...optimizedFree];
+            for (const { index, stop } of anchoredMiddle) {
+              orderedMiddle.splice(
+                Math.min(index, orderedMiddle.length),
+                0,
+                stop,
+              );
+            }
+          } else {
+            orderedMiddle = middleStops.slice();
+          }
           const orderedStops = [first, ...orderedMiddle, last];
 
           // Legs: for N stops in a linear route, Google returns N-1
@@ -260,7 +300,7 @@ export function usePlotRoute({
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [enabled, waypoints, optimize, routesLib]);
+  }, [enabled, waypoints, optimize, anchoredIds, routesLib]);
 
   return { status, result, error };
 }

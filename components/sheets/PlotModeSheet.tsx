@@ -60,6 +60,13 @@ type PlotModeSheetProps = {
     startLeg: { distanceMeters: number; durationSeconds: number; path: google.maps.LatLngLiteral[] } | null;
     endLeg: { distanceMeters: number; durationSeconds: number; path: google.maps.LatLngLiteral[] } | null;
   } | null;
+  /** IDs of stops locked in place during optimization. */
+  anchoredIds: Set<string>;
+  onToggleAnchor: (id: string) => void;
+  onOptimize: () => void;
+  isOptimizing: boolean;
+  /** User's home location for home start/end cards. */
+  userLocation?: { lat: number; lng: number; formattedAddress: string } | null;
 };
 
 /**
@@ -82,6 +89,11 @@ export function PlotModeSheet({
   onReorder,
   onResetOrder,
   customLegs,
+  anchoredIds,
+  onToggleAnchor,
+  onOptimize,
+  isOptimizing,
+  userLocation,
 }: PlotModeSheetProps) {
   // Track whether we still have meaningful content to render so the
   // sheet doesn't flash empty during the close animation (~400ms).
@@ -136,6 +148,11 @@ export function PlotModeSheet({
               onResetOrder={onResetOrder}
               onExit={onExit}
               customLegs={customLegs}
+              anchoredIds={anchoredIds}
+              onToggleAnchor={onToggleAnchor}
+              onOptimize={onOptimize}
+              isOptimizing={isOptimizing}
+              userLocation={userLocation}
             />
           ) : (
             <>
@@ -166,6 +183,11 @@ type PlotContentProps = {
   onResetOrder: () => void;
   onExit: () => void;
   customLegs?: PlotModeSheetProps['customLegs'];
+  anchoredIds: Set<string>;
+  onToggleAnchor: (id: string) => void;
+  onOptimize: () => void;
+  isOptimizing: boolean;
+  userLocation?: PlotModeSheetProps['userLocation'];
 };
 
 function PlotContent({
@@ -179,6 +201,11 @@ function PlotContent({
   onResetOrder,
   onExit,
   customLegs,
+  anchoredIds,
+  onToggleAnchor,
+  onOptimize,
+  isOptimizing,
+  userLocation,
 }: PlotContentProps) {
   // If we have a result AND stops to show, render the full ready
   // content even when status is 'computing' — that way reorders
@@ -190,11 +217,16 @@ function PlotContent({
         result={result}
         stops={displayStops}
         isManualOrder={isManualOrder}
-        isRecomputing={status === 'computing'}
+        isRecomputing={status === 'computing' || isOptimizing}
         onReorder={onReorder}
         onResetOrder={onResetOrder}
         onExit={onExit}
         customLegs={customLegs}
+        anchoredIds={anchoredIds}
+        onToggleAnchor={onToggleAnchor}
+        onOptimize={onOptimize}
+        isOptimizing={isOptimizing}
+        userLocation={userLocation}
       />
     );
   }
@@ -226,6 +258,11 @@ type ReadyContentProps = {
   onResetOrder: () => void;
   onExit: () => void;
   customLegs?: PlotModeSheetProps['customLegs'];
+  anchoredIds: Set<string>;
+  onToggleAnchor: (id: string) => void;
+  onOptimize: () => void;
+  isOptimizing: boolean;
+  userLocation?: PlotModeSheetProps['userLocation'];
 };
 
 type SaveState =
@@ -242,6 +279,11 @@ function ReadyContent({
   onResetOrder,
   onExit,
   customLegs,
+  anchoredIds,
+  onToggleAnchor,
+  onOptimize,
+  isOptimizing,
+  userLocation,
 }: ReadyContentProps) {
   const router = useRouter();
 
@@ -434,6 +476,7 @@ function ReadyContent({
               stops={stops}
               origin={result.origin}
               customLegs={customLegs}
+              userLocation={userLocation}
             />
           </div>
           <div className="flex items-center justify-between border-x-[2px] border-b-[2px] border-ink bg-cream px-3 py-1">
@@ -457,12 +500,22 @@ function ReadyContent({
               In Order
             </h3>
             <span aria-hidden className="h-[2px] flex-1 bg-ink" />
+            <button
+              type="button"
+              onClick={onOptimize}
+              disabled={isOptimizing || stops.length < 3}
+              className="font-mono flex items-center gap-1 border border-ink bg-cream px-2 py-1 text-[9px] font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:bg-mustard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce disabled:opacity-50"
+              aria-label="Optimize free stops around anchored positions"
+            >
+              <span aria-hidden>&#x2728;</span>
+              <span>{isOptimizing ? 'Optimizing\u2026' : 'Optimize'}</span>
+            </button>
             {isManualOrder && (
               <button
                 type="button"
                 onClick={onResetOrder}
                 className="font-mono flex items-center gap-1 border border-ink bg-cream px-2 py-1 text-[9px] font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:bg-mustard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce"
-                aria-label="Reset to Google's optimal order"
+                aria-label="Reset order and clear anchors"
               >
                 <span aria-hidden>&#x21BA;</span>
                 <span>Reset</span>
@@ -471,9 +524,7 @@ function ReadyContent({
           </div>
 
           <p className="font-mono text-[9px] tracking-[0.15em] text-ink-soft/70 uppercase italic">
-            {isManualOrder
-              ? 'Custom order. Press and drag to rearrange.'
-              : 'Google optimized. Press and drag any stop to customize.'}
+            Drag to reorder. Tap &#x2693; to anchor stops in place, then Optimize.
           </p>
 
           <DndContext
@@ -486,6 +537,16 @@ function ReadyContent({
               strategy={verticalListSortingStrategy}
             >
               <ol className="flex flex-col gap-1">
+                {/* Home start card */}
+                {userLocation && (
+                  <li className="flex items-center gap-3 border-[1.5px] border-dashed border-ink/40 bg-cream-deep/20 px-3 py-2">
+                    <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[8px] font-bold tracking-[0.22em] text-mustard uppercase">Home &mdash; Start</p>
+                      <p className="font-mono mt-0.5 truncate text-[9px] tracking-[0.12em] text-ink-faded">{userLocation.formattedAddress}</p>
+                    </div>
+                  </li>
+                )}
                 {stops.map((stop, i) => {
                   const showLegBefore = i > 0;
                   const legMeters = result.legDistancesMeters[i - 1];
@@ -507,11 +568,22 @@ function ReadyContent({
                         stop={stop}
                         index={i}
                         totalStops={stops.length}
+                        isAnchored={anchoredIds.has(stop.id)}
+                        onToggleAnchor={() => onToggleAnchor(stop.id)}
                       />
                     </Fragment>
                   );
                 })}
-                {/* No return leg — the route ends at the last stop. */}
+                {/* Home end card */}
+                {userLocation && (
+                  <li className="flex items-center gap-3 border-[1.5px] border-dashed border-ink/40 bg-cream-deep/20 px-3 py-2">
+                    <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[8px] font-bold tracking-[0.22em] text-mustard uppercase">Home &mdash; End</p>
+                      <p className="font-mono mt-0.5 truncate text-[9px] tracking-[0.12em] text-ink-faded">{userLocation.formattedAddress}</p>
+                    </div>
+                  </li>
+                )}
               </ol>
             </SortableContext>
           </DndContext>
@@ -622,12 +694,16 @@ type SortableStopCardProps = {
   stop: Restaurant;
   index: number;
   totalStops: number;
+  isAnchored?: boolean;
+  onToggleAnchor?: () => void;
 };
 
 function SortableStopCard({
   stop,
   index,
   totalStops,
+  isAnchored = false,
+  onToggleAnchor,
 }: SortableStopCardProps) {
   const {
     attributes,
@@ -652,11 +728,33 @@ function SortableStopCard({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className={`group flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5 select-none ${
-        isFirst ? 'border-l-[5px] border-l-sauce' : ''
-      } ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : ''}`}
-      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}.`}
+      className={`group flex items-stretch gap-3 border-[1.5px] px-3 py-2.5 select-none ${
+        isAnchored
+          ? 'border-mustard bg-mustard/10'
+          : 'border-ink bg-cream'
+      } ${isFirst ? 'border-l-[5px] border-l-sauce' : ''} ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : ''}`}
+      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}. ${isAnchored ? 'Anchored.' : ''}`}
     >
+      {/* Anchor toggle */}
+      {onToggleAnchor && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAnchor();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label={isAnchored ? 'Unlock stop position' : 'Lock stop position'}
+          aria-pressed={isAnchored}
+          className={`font-mono flex shrink-0 items-center self-center rounded px-1 py-1 text-[12px] leading-none transition-colors ${
+            isAnchored
+              ? 'text-mustard hover:text-ink'
+              : 'text-ink-faded/40 hover:text-mustard'
+          }`}
+        >
+          &#x2693;
+        </button>
+      )}
       <span
         aria-hidden
         className="font-mono flex shrink-0 items-start bg-ink px-2 py-1 text-[11px] font-bold tracking-[0.1em] text-cream"
@@ -664,7 +762,13 @@ function SortableStopCard({
         {String(index + 1).padStart(2, '0')}
       </span>
       <div className="min-w-0 flex-1 self-center">
-        {isFirst && (
+        {isAnchored && (
+          <p className="font-mono mb-0.5 flex items-center gap-1 text-[8px] font-bold tracking-[0.22em] text-mustard uppercase">
+            <span aria-hidden>&#x2693;</span>
+            <span>Anchored</span>
+          </p>
+        )}
+        {isFirst && !isAnchored && (
           <p className="font-mono mb-0.5 flex items-center gap-1 text-[8px] font-bold tracking-[0.22em] text-sauce uppercase">
             <span aria-hidden>&#x2605;</span>
             <span>Start</span>
@@ -680,8 +784,7 @@ function SortableStopCard({
           ) : null}
         </p>
       </div>
-      {/* Drag handle — only this element initiates a drag. The rest
-          of the card is passive so mobile users can scroll freely. */}
+      {/* Drag handle */}
       <span
         {...listeners}
         aria-label="Drag to reorder"
@@ -768,11 +871,13 @@ function PlotRouteMap({
   stops,
   origin,
   customLegs,
+  userLocation,
 }: {
   path: google.maps.LatLngLiteral[];
   stops: Restaurant[];
   origin: google.maps.LatLngLiteral;
   customLegs?: PlotModeSheetProps['customLegs'];
+  userLocation?: PlotModeSheetProps['userLocation'];
 }) {
   const bounds = useMemo(() => {
     const points = [origin, ...stops.map((s) => ({ lat: s.lat, lng: s.lng }))];
@@ -809,6 +914,22 @@ function PlotRouteMap({
       )}
       {customLegs?.endLeg && (
         <DashedPolyline path={customLegs.endLeg.path} />
+      )}
+
+      {/* Home pin */}
+      {userLocation && (
+        <AdvancedMarker
+          position={{ lat: userLocation.lat, lng: userLocation.lng }}
+          title="Home"
+        >
+          <div
+            role="img"
+            aria-label="Home"
+            className="font-mono flex size-6 items-center justify-center rounded-full border-[1.5px] border-dashed border-ink bg-mustard text-[10px] text-ink shadow-[0_2px_0_rgba(22,20,19,0.5)]"
+          >
+            &#x2302;
+          </div>
+        </AdvancedMarker>
       )}
 
       {/* Numbered pins */}

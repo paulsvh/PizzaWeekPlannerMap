@@ -5,6 +5,7 @@ import {
   getAllRestaurants,
   getRestaurantsByIds,
 } from '@/lib/firebase/restaurants';
+import { getUserLocation } from '@/lib/firebase/user-locations';
 import { RouteEditor } from '@/components/route-editor/RouteEditor';
 
 type PageProps = {
@@ -35,9 +36,10 @@ export default async function RouteEditPage({ params }: PageProps) {
     redirect(`/routes/${routeId}`);
   }
 
-  const [stops, allRestaurants] = await Promise.all([
+  const [stops, allRestaurants, userLocation] = await Promise.all([
     getRestaurantsByIds(route.stopRestaurantIds),
     getAllRestaurants(),
+    getUserLocation(session.userId),
   ]);
 
   return (
@@ -49,6 +51,7 @@ export default async function RouteEditPage({ params }: PageProps) {
       mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY ?? ''}
       savedDistanceMeters={route.totalDistanceMeters}
       savedDurationSeconds={route.totalDurationSeconds}
+      userLocation={userLocation}
     />
   );
 }

@@ -29,7 +29,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Restaurant } from '@/lib/types';
+import type { Restaurant, UserLocation } from '@/lib/types';
 import { usePlotRoute } from '@/lib/maps/use-plot-route';
 import { MAX_WAYPOINTS } from '@/lib/maps/constants';
 import { RouteEditorMap } from '@/components/route-editor/RouteEditorMap';
@@ -48,6 +48,8 @@ type RouteEditorProps = {
    * recompute completes on mount. */
   savedDistanceMeters: number;
   savedDurationSeconds: number;
+  /** User's home location for home start/end cards. */
+  userLocation?: UserLocation | null;
 };
 
 const MIN_STOPS = 2;
@@ -101,6 +103,7 @@ function RouteEditorInner({
   allRestaurants,
   savedDistanceMeters,
   savedDurationSeconds,
+  userLocation,
 }: RouteEditorProps) {
   const router = useRouter();
 
@@ -109,14 +112,13 @@ function RouteEditorInner({
   const [editStops, setEditStops] = useState<Restaurant[]>(savedStops);
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
 
+  /** IDs of stops locked in place during optimization. */
+  const [anchoredIds, setAnchoredIds] = useState<Set<string>>(new Set());
+
   // Optimize flow: when the user clicks "Optimize Route", we flip
   // `optimizing` to true so usePlotRoute calls Google with
   // `optimizeWaypoints: true`. Once Google's optimal order comes
   // back, we apply it to editStops and flip optimizing back off.
-  // The ref tracks whether the hook has entered 'computing' at
-  // least once since the button was clicked — without that guard
-  // the effect would immediately re-apply the stale pre-optimize
-  // result on the first render.
   const [optimizing, setOptimizing] = useState(false);
   const optimizeSeenComputing = useRef(false);
 
@@ -125,6 +127,7 @@ function RouteEditorInner({
       enabled: true,
       waypoints: editStops,
       optimize: optimizing,
+      anchoredIds,
     });
 
   // Capture the optimize result: once the hook transitions
@@ -228,6 +231,18 @@ function RouteEditorInner({
     if (editStops.length < 2 || isRecomputing || optimizing) return;
     optimizeSeenComputing.current = false;
     setOptimizing(true);
+  };
+
+  const handleToggleAnchor = (id: string) => {
+    setAnchoredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   /* ---------- save ---------- */
@@ -414,6 +429,7 @@ function RouteEditorInner({
             <RouteEditorMap
               stops={editStops}
               path={plotResult?.path ?? []}
+              homeLocation={userLocation}
             />
           </div>
           <figcaption className="flex items-center justify-between border-x-[3px] border-b-[3px] border-ink bg-cream px-4 py-1.5">
@@ -492,6 +508,16 @@ function RouteEditorInner({
               strategy={verticalListSortingStrategy}
             >
               <ol className="flex flex-col gap-1">
+                {/* Home start card */}
+                {userLocation && (
+                  <li className="flex items-center gap-3 border-[1.5px] border-dashed border-ink/40 bg-cream-deep/20 px-3 py-2">
+                    <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[8px] font-bold tracking-[0.22em] text-mustard uppercase">Home &mdash; Start</p>
+                      <p className="font-mono mt-0.5 truncate text-[9px] tracking-[0.12em] text-ink-faded">{userLocation.formattedAddress}</p>
+                    </div>
+                  </li>
+                )}
                 {editStops.map((stop, i) => {
                   const showLegBefore = i > 0;
                   const legMeters = plotResult?.legDistancesMeters[i - 1];
@@ -515,11 +541,22 @@ function RouteEditorInner({
                         totalStops={editStops.length}
                         canRemove={canRemoveStops}
                         onRemove={handleRemove}
+                        isAnchored={anchoredIds.has(stop.id)}
+                        onToggleAnchor={() => handleToggleAnchor(stop.id)}
                       />
                     </Fragment>
                   );
                 })}
-                {/* No return leg — route ends at the last stop. */}
+                {/* Home end card */}
+                {userLocation && (
+                  <li className="flex items-center gap-3 border-[1.5px] border-dashed border-ink/40 bg-cream-deep/20 px-3 py-2">
+                    <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[8px] font-bold tracking-[0.22em] text-mustard uppercase">Home &mdash; End</p>
+                      <p className="font-mono mt-0.5 truncate text-[9px] tracking-[0.12em] text-ink-faded">{userLocation.formattedAddress}</p>
+                    </div>
+                  </li>
+                )}
               </ol>
             </SortableContext>
           </DndContext>
@@ -690,6 +727,8 @@ type SortableStopCardProps = {
   totalStops: number;
   canRemove: boolean;
   onRemove: (restaurantId: string) => void;
+  isAnchored?: boolean;
+  onToggleAnchor?: () => void;
 };
 
 function SortableStopCard({
@@ -698,6 +737,8 @@ function SortableStopCard({
   totalStops,
   canRemove,
   onRemove,
+  isAnchored = false,
+  onToggleAnchor,
 }: SortableStopCardProps) {
   const {
     attributes,
@@ -722,13 +763,34 @@ function SortableStopCard({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className={`group flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-3 select-none sm:px-4 ${
-        isFirst ? 'border-l-[5px] border-l-sauce' : ''
-      } ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : 'shadow-[3px_3px_0_rgba(22,20,19,0.08)]'}`}
-      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}.`}
+      className={`group flex items-stretch gap-3 border-[1.5px] px-3 py-3 select-none sm:px-4 ${
+        isAnchored
+          ? 'border-mustard bg-mustard/10'
+          : 'border-ink bg-cream'
+      } ${isFirst ? 'border-l-[5px] border-l-sauce' : ''} ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : 'shadow-[3px_3px_0_rgba(22,20,19,0.08)]'}`}
+      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}. ${isAnchored ? 'Anchored.' : ''}`}
     >
-      {/* Drag handle — only this element initiates a drag. The rest
-          of the card is passive so mobile users can scroll freely. */}
+      {/* Anchor toggle */}
+      {onToggleAnchor && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAnchor();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label={isAnchored ? 'Unlock stop position' : 'Lock stop position'}
+          aria-pressed={isAnchored}
+          className={`font-mono flex shrink-0 items-center self-center rounded px-1 py-1 text-[12px] leading-none transition-colors ${
+            isAnchored
+              ? 'text-mustard hover:text-ink'
+              : 'text-ink-faded/40 hover:text-mustard'
+          }`}
+        >
+          &#x2693;
+        </button>
+      )}
+      {/* Drag handle */}
       <span
         {...listeners}
         aria-label="Drag to reorder"
@@ -745,7 +807,13 @@ function SortableStopCard({
         {String(index + 1).padStart(2, '0')}
       </span>
       <div className="min-w-0 flex-1 self-center">
-        {isFirst && (
+        {isAnchored && (
+          <p className="font-mono mb-0.5 flex items-center gap-1 text-[8px] font-bold tracking-[0.22em] text-mustard uppercase">
+            <span aria-hidden>&#x2693;</span>
+            <span>Anchored</span>
+          </p>
+        )}
+        {isFirst && !isAnchored && (
           <p className="font-mono mb-0.5 flex items-center gap-1 text-[8px] font-bold tracking-[0.22em] text-sauce uppercase">
             <span aria-hidden>&#x2605;</span>
             <span>Start</span>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   APIProvider,
   Map,
@@ -105,13 +105,16 @@ function MapViewInner({
   const [plotMode, setPlotMode] = useState(false);
   const [showHomeSheet, setShowHomeSheet] = useState(false);
   /**
-   * User's custom stop order. Null means "use Google's optimization
-   * with the first starred restaurant as the fixed anchor". When the
-   * user drags to reorder in the plot sheet, we store the full new
-   * array here. Subsequent starring/unstarring prunes and extends
-   * the manual order in-place.
+   * User's custom stop order. Null means "use the starred set order".
+   * When the user drags to reorder in the plot sheet, we store the
+   * full new array here.
    */
   const [manualOrder, setManualOrder] = useState<Restaurant[] | null>(null);
+  /** IDs of stops locked in place during optimization. */
+  const [anchoredIds, setAnchoredIds] = useState<Set<string>>(new Set());
+  /** True while an explicit optimize request is in flight. */
+  const [optimizing, setOptimizing] = useState(false);
+  const optimizeSeenComputing = useRef(false);
   const { starred, isStarred } = useStars();
   const bounds = useMemo(() => computeBounds(restaurants), [restaurants]);
 
@@ -134,8 +137,27 @@ function MapViewInner({
     usePlotRoute({
       enabled: plotMode,
       waypoints: waypointsForRoute,
-      optimize: manualOrder === null,
+      optimize: optimizing,
+      anchoredIds,
     });
+
+  // When an explicit optimize finishes, apply the result to manual order
+  // and turn off the optimizing flag.
+  useEffect(() => {
+    if (!optimizing) return;
+    if (plotStatus === 'computing') {
+      optimizeSeenComputing.current = true;
+    }
+    if (
+      plotStatus === 'ready' &&
+      optimizeSeenComputing.current &&
+      plotResult
+    ) {
+      setManualOrder(plotResult.orderedStops);
+      setOptimizing(false);
+      optimizeSeenComputing.current = false;
+    }
+  }, [optimizing, plotStatus, plotResult]);
 
   // Custom home→first and last→home legs for plot mode.
   const plotStops = plotResult?.orderedStops ?? [];
@@ -151,6 +173,9 @@ function MapViewInner({
   useEffect(() => {
     if (!plotMode) {
       setManualOrder(null);
+      setAnchoredIds(new Set());
+      setOptimizing(false);
+      optimizeSeenComputing.current = false;
     }
   }, [plotMode]);
 
@@ -198,6 +223,28 @@ function MapViewInner({
 
   const handleResetOrder = () => {
     setManualOrder(null);
+    setAnchoredIds(new Set());
+  };
+
+  const handleToggleAnchor = (id: string) => {
+    setAnchoredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleOptimize = () => {
+    // If not already in manual order, snapshot the current display order
+    if (!manualOrder) {
+      setManualOrder(displayStops.length > 0 ? displayStops : starredRestaurants);
+    }
+    optimizeSeenComputing.current = false;
+    setOptimizing(true);
   };
 
   // The stops to DISPLAY in the sheet. When the user has reordered,
@@ -328,6 +375,11 @@ function MapViewInner({
         onReorder={handleReorder}
         onResetOrder={handleResetOrder}
         customLegs={customLegs}
+        anchoredIds={anchoredIds}
+        onToggleAnchor={handleToggleAnchor}
+        onOptimize={handleOptimize}
+        isOptimizing={optimizing}
+        userLocation={initialUserLocation}
       />
 
     </div>
