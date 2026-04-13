@@ -1,12 +1,13 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { login, type LoginState } from '@/app/login/actions';
 
 const initialState: LoginState = undefined;
 
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(login, initialState);
+  const [showPassword, setShowPassword] = useState(false);
 
   const emailError = state?.errors?.email?.[0];
   const passwordError = state?.errors?.password?.[0];
@@ -166,23 +167,33 @@ export default function LoginPage() {
                 Password
               </span>
             </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              aria-invalid={!!passwordError || !!formError}
-              aria-describedby={
-                passwordError
-                  ? 'password-error'
-                  : formError
-                    ? 'form-error'
-                    : undefined
-              }
-              placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
-              className="font-mono w-full border-0 border-b-2 border-ink bg-transparent pt-1 pb-1 text-xl tracking-[0.3em] text-ink placeholder:text-ink-faded/50 focus:border-b-[3px] focus:border-sauce focus:outline-none aria-[invalid=true]:border-sauce sm:text-2xl"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                aria-invalid={!!passwordError || !!formError}
+                aria-describedby={
+                  passwordError
+                    ? 'password-error'
+                    : formError
+                      ? 'form-error'
+                      : undefined
+                }
+                placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
+                className="font-mono w-full border-0 border-b-2 border-ink bg-transparent pt-1 pr-16 pb-1 text-xl tracking-[0.3em] text-ink placeholder:text-ink-faded/50 focus:border-b-[3px] focus:border-sauce focus:outline-none aria-[invalid=true]:border-sauce sm:text-2xl"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="font-mono absolute right-0 bottom-1.5 border border-ink bg-cream px-2 py-0.5 text-[9px] font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:bg-mustard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce"
+              >
+                {showPassword ? '\u25C6 Hide' : '\u25C7 Show'}
+              </button>
+            </div>
             {passwordError && (
               <p
                 id="password-error"
