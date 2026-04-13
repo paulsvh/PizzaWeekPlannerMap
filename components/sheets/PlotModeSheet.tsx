@@ -55,6 +55,8 @@ type PlotModeSheetProps = {
   /** Called when the user drags-and-drops to reorder. */
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
+  /** Called when a stop is removed from the route. */
+  onRemoveStop: (restaurantId: string) => void;
   /** Custom home leg data (null if no home location set). */
   customLegs?: {
     startLeg: { distanceMeters: number; durationSeconds: number; path: google.maps.LatLngLiteral[] } | null;
@@ -88,6 +90,7 @@ export function PlotModeSheet({
   isManualOrder,
   onReorder,
   onResetOrder,
+  onRemoveStop,
   customLegs,
   anchoredIds,
   onToggleAnchor,
@@ -154,6 +157,7 @@ export function PlotModeSheet({
               isManualOrder={isManualOrder}
               onReorder={onReorder}
               onResetOrder={onResetOrder}
+              onRemoveStop={onRemoveStop}
               customLegs={customLegs}
               anchoredIds={anchoredIds}
               onToggleAnchor={onToggleAnchor}
@@ -189,6 +193,7 @@ type PlotContentProps = {
   isManualOrder: boolean;
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
+  onRemoveStop: (restaurantId: string) => void;
   customLegs?: PlotModeSheetProps['customLegs'];
   anchoredIds: Set<string>;
   onToggleAnchor: (id: string) => void;
@@ -206,6 +211,7 @@ function PlotContent({
   isManualOrder,
   onReorder,
   onResetOrder,
+  onRemoveStop,
   customLegs,
   anchoredIds,
   onToggleAnchor,
@@ -226,6 +232,7 @@ function PlotContent({
         isRecomputing={status === 'computing' || isOptimizing}
         onReorder={onReorder}
         onResetOrder={onResetOrder}
+        onRemoveStop={onRemoveStop}
         customLegs={customLegs}
         anchoredIds={anchoredIds}
         onToggleAnchor={onToggleAnchor}
@@ -260,6 +267,7 @@ type ReadyContentProps = {
   isRecomputing: boolean;
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
+  onRemoveStop: (restaurantId: string) => void;
   customLegs?: PlotModeSheetProps['customLegs'];
   anchoredIds: Set<string>;
   onToggleAnchor: (id: string) => void;
@@ -280,6 +288,7 @@ function ReadyContent({
   isRecomputing,
   onReorder,
   onResetOrder,
+  onRemoveStop,
   customLegs,
   anchoredIds,
   onToggleAnchor,
@@ -465,14 +474,14 @@ function ReadyContent({
           </div>
         )}
 
-        {/* Inline route map — updates live as stops are reordered */}
+        {/* Inline route map — sticky so it stays visible while scrolling the stop list */}
         <figure
-          className={`animate-rise flex flex-col transition-opacity duration-150 ${
+          className={`animate-rise sticky top-0 z-10 flex flex-col bg-cream transition-opacity duration-150 ${
             isRecomputing ? 'opacity-50' : 'opacity-100'
           }`}
           style={{ animationDelay: '380ms' }}
         >
-          <div className="relative h-[200px] w-full border-[2px] border-ink bg-cream-deep">
+          <div className="relative h-[180px] w-full border-[2px] border-ink bg-cream-deep">
             <PlotRouteMap
               path={result.path}
               stops={stops}
@@ -578,6 +587,8 @@ function ReadyContent({
                         totalStops={stops.length}
                         isAnchored={anchoredIds.has(stop.id)}
                         onToggleAnchor={() => onToggleAnchor(stop.id)}
+                        canRemove={stops.length > 2}
+                        onRemove={() => onRemoveStop(stop.id)}
                       />
                     </Fragment>
                   );
@@ -696,6 +707,8 @@ type SortableStopCardProps = {
   totalStops: number;
   isAnchored?: boolean;
   onToggleAnchor?: () => void;
+  canRemove?: boolean;
+  onRemove?: () => void;
 };
 
 function SortableStopCard({
@@ -704,6 +717,8 @@ function SortableStopCard({
   totalStops,
   isAnchored = false,
   onToggleAnchor,
+  canRemove = false,
+  onRemove,
 }: SortableStopCardProps) {
   const {
     attributes,
@@ -794,6 +809,22 @@ function SortableStopCard({
       >
         &#x2630;
       </span>
+      {/* Remove button */}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (canRemove) onRemove();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          disabled={!canRemove}
+          aria-label={`Remove ${stop.pizzaName} from the route`}
+          className="font-mono flex shrink-0 items-center justify-center self-center border-[1.5px] border-ink bg-cream px-2 py-1 text-[13px] leading-none font-bold text-ink transition-colors hover:border-sauce hover:bg-sauce hover:text-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          &times;
+        </button>
+      )}
     </li>
   );
 }

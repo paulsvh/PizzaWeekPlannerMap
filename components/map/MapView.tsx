@@ -115,7 +115,7 @@ function MapViewInner({
   /** True while an explicit optimize request is in flight. */
   const [optimizing, setOptimizing] = useState(false);
   const optimizeSeenComputing = useRef(false);
-  const { starred, isStarred } = useStars();
+  const { starred, isStarred, toggle: toggleStar } = useStars();
   const bounds = useMemo(() => computeBounds(restaurants), [restaurants]);
 
   // Derive the ordered list of starred restaurants (stable order by
@@ -234,6 +234,24 @@ function MapViewInner({
       } else {
         next.add(id);
       }
+      return next;
+    });
+  };
+
+  const handleRemoveStop = (restaurantId: string) => {
+    // Unstar the restaurant — this removes it from starredRestaurants
+    // which triggers a recompute. Also remove from manual order if set.
+    toggleStar(restaurantId);
+    setManualOrder((prev) => {
+      if (!prev) return null;
+      const filtered = prev.filter((r) => r.id !== restaurantId);
+      return filtered.length > 0 ? filtered : null;
+    });
+    // Remove from anchored set
+    setAnchoredIds((prev) => {
+      if (!prev.has(restaurantId)) return prev;
+      const next = new Set(prev);
+      next.delete(restaurantId);
       return next;
     });
   };
@@ -374,6 +392,7 @@ function MapViewInner({
         isManualOrder={manualOrder !== null}
         onReorder={handleReorder}
         onResetOrder={handleResetOrder}
+        onRemoveStop={handleRemoveStop}
         customLegs={customLegs}
         anchoredIds={anchoredIds}
         onToggleAnchor={handleToggleAnchor}
