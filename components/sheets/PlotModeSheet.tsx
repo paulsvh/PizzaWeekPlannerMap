@@ -481,7 +481,7 @@ function ReadyContent({
           }`}
           style={{ animationDelay: '380ms' }}
         >
-          <div className="relative h-[180px] w-full border-[2px] border-ink bg-cream-deep">
+          <div className="relative h-[28vh] min-h-[180px] max-h-[300px] w-full border-[2px] border-ink bg-cream-deep">
             <PlotRouteMap
               path={result.path}
               stops={stops}
