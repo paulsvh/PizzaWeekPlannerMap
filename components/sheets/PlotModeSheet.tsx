@@ -127,7 +127,7 @@ export function PlotModeSheet({
       dismissible={false}
     >
       <Drawer.Portal>
-        <Drawer.Overlay className="pointer-events-none fixed inset-0 z-40 bg-ink/45 backdrop-blur-[2px]" />
+        <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/45 backdrop-blur-[2px]" />
         <Drawer.Content
           aria-describedby={undefined}
           className="fixed right-0 bottom-0 left-0 z-50 flex max-h-[94vh] flex-col border-t-[3px] border-ink bg-cream shadow-[0_-24px_48px_rgba(22,20,19,0.4)] outline-none"
@@ -163,6 +163,22 @@ export function PlotModeSheet({
             </>
           )}
         </Drawer.Content>
+
+        {/* Exit Plot FAB — rendered inside the portal so it shares
+            the same stacking context as the sheet and sits above
+            the backdrop-blur overlay. */}
+        <button
+          type="button"
+          onClick={onExit}
+          aria-label="Exit plot route mode"
+          className="font-mono fixed right-4 z-[55] flex items-center gap-2 rotate-[-3deg] border-[2.5px] border-sauce bg-sauce px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-cream uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:shadow-[5px_5px_0_rgba(124,19,8,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
+          style={{ top: 'calc(env(safe-area-inset-top) + 78px)' }}
+        >
+          <span aria-hidden className="text-sm leading-none">
+            &#x2715;
+          </span>
+          <span>Exit Plot</span>
+        </button>
       </Drawer.Portal>
     </Drawer.Root>
   );

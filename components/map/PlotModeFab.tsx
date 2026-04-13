@@ -1,56 +1,31 @@
 'use client';
 
-import { createPortal } from 'react-dom';
-
 type PlotModeFabProps = {
   active: boolean;
   onToggle: () => void;
 };
 
 /**
- * Floating toggle for Plot Route mode.
- *
- * Positioned top-right below the MapHeader so it's always visible
- * regardless of whether a bottom sheet is open. When plot mode is
- * inactive, the button is a cream-on-ink stamp tilted slightly
- * clockwise ("Plot Route"). When active, it flips to sauce-red and
- * counter-tilts ("Exit Plot") so the state is unambiguous at a
- * glance.
- *
- * When active, the button renders via a portal to document.body so
- * it's a DOM sibling of vaul's sheet portal — this ensures the FAB
- * sits above the sheet's backdrop-blur overlay.
+ * Floating "Plot Route" button. Only visible when plot mode is OFF.
+ * When plot mode is active, the exit button is rendered inside the
+ * PlotModeSheet's portal (same stacking context as the sheet) so it
+ * sits above the backdrop-blur overlay.
  */
 export function PlotModeFab({ active, onToggle }: PlotModeFabProps) {
-  const button = (
+  if (active) return null;
+
+  return (
     <button
       type="button"
       onClick={onToggle}
-      aria-pressed={active}
-      aria-label={
-        active
-          ? 'Exit plot route mode'
-          : 'Plot a biking route between your starred restaurants'
-      }
-      className={`font-mono fixed right-4 z-[55] flex items-center gap-2 border-[2.5px] px-3 py-2 text-[10px] font-bold tracking-[0.2em] uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px] ${
-        active
-          ? 'rotate-[-3deg] border-sauce bg-sauce text-cream hover:shadow-[5px_5px_0_rgba(124,19,8,0.4)]'
-          : 'rotate-[2deg] border-ink bg-cream text-ink hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)]'
-      }`}
+      aria-label="Plot a biking route between your starred restaurants"
+      className="font-mono fixed right-4 z-40 flex items-center gap-2 rotate-[2deg] border-[2.5px] border-ink bg-cream px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-ink uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
       style={{ top: 'calc(env(safe-area-inset-top) + 78px)' }}
     >
       <span aria-hidden className="text-sm leading-none">
-        {active ? '\u2715' : '\u2197'}
+        &#x2197;
       </span>
-      <span>{active ? 'Exit Plot' : 'Plot Route'}</span>
+      <span>Plot Route</span>
     </button>
   );
-
-  // When active, render via portal so the button is a DOM sibling of
-  // vaul's sheet portal and sits above its backdrop-blur overlay.
-  if (active) {
-    return createPortal(button, document.body);
-  }
-
-  return button;
 }
