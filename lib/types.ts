@@ -72,6 +72,16 @@ export type Star = {
   createdAt: number;
 };
 
+export type UserLocation = {
+  userId: string;
+  label: string;
+  lat: number;
+  lng: number;
+  formattedAddress: string;
+  placeId: string | null;
+  updatedAt: number;
+};
+
 export type Route = {
   id: string;
   creatorUserId: string;

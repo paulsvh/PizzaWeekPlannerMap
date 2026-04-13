@@ -7,7 +7,7 @@ import {
   AdvancedMarker,
   type MapCameraChangedEvent,
 } from '@vis.gl/react-google-maps';
-import type { Restaurant } from '@/lib/types';
+import type { Restaurant, UserLocation } from '@/lib/types';
 import { RestaurantMarker } from '@/components/map/RestaurantMarker';
 import { MapHeader } from '@/components/map/MapHeader';
 import { PlotModeFab } from '@/components/map/PlotModeFab';
@@ -15,6 +15,7 @@ import { RoutePolyline } from '@/components/map/RoutePolyline';
 import { RestaurantSheet } from '@/components/sheets/RestaurantSheet';
 import { PlotModeSheet } from '@/components/sheets/PlotModeSheet';
 import { RoutePreview } from '@/components/map/RoutePreview';
+import { HomeLocationSetter } from '@/components/location/HomeLocationSetter';
 import { StarsProvider, useStars } from '@/components/context/StarsProvider';
 import { usePlotRoute } from '@/lib/maps/use-plot-route';
 
@@ -24,6 +25,7 @@ type MapViewProps = {
   mapsApiKey: string;
   initialStarredIds: string[];
   isAdmin: boolean;
+  initialUserLocation: UserLocation | null;
 };
 
 type MapViewInnerProps = Omit<MapViewProps, 'initialStarredIds' | 'mapsApiKey'>;
@@ -68,6 +70,7 @@ export function MapView({
   mapsApiKey,
   initialStarredIds,
   isAdmin,
+  initialUserLocation,
 }: MapViewProps) {
   if (!mapsApiKey) {
     return <MissingMapKeyNotice displayName={displayName} />;
@@ -84,6 +87,7 @@ export function MapView({
           restaurants={restaurants}
           displayName={displayName}
           isAdmin={isAdmin}
+          initialUserLocation={initialUserLocation}
         />
       </APIProvider>
     </StarsProvider>
@@ -94,10 +98,12 @@ function MapViewInner({
   restaurants,
   displayName,
   isAdmin,
+  initialUserLocation,
 }: MapViewInnerProps) {
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [plotMode, setPlotMode] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showHomeSheet, setShowHomeSheet] = useState(false);
   /**
    * User's custom stop order. Null means "use Google's optimization
    * with the first starred restaurant as the fixed anchor". When the
@@ -232,6 +238,22 @@ function MapViewInner({
           </AdvancedMarker>
         ))}
 
+        {/* Home pin — mustard house icon when the user has set a home location */}
+        {initialUserLocation && (
+          <AdvancedMarker
+            position={{ lat: initialUserLocation.lat, lng: initialUserLocation.lng }}
+            title={`Home: ${initialUserLocation.formattedAddress}`}
+          >
+            <div
+              role="img"
+              aria-label="Your home location"
+              className="font-mono flex size-7 items-center justify-center rounded-full border-[2px] border-dashed border-ink bg-mustard text-[12px] text-ink shadow-[0_3px_0_rgba(22,20,19,0.55),0_4px_10px_rgba(22,20,19,0.3)]"
+            >
+              &#x2302;
+            </div>
+          </AdvancedMarker>
+        )}
+
         {/* Plot-route polyline overlay — only rendered when the
             directions call has succeeded. */}
         {plotMode && plotResult && plotResult.path.length > 0 && (
@@ -243,6 +265,36 @@ function MapViewInner({
 
       <PlotModeFab active={plotMode} onToggle={togglePlotMode} />
 
+      {/* Set Home FAB — always visible, left side */}
+      {!plotMode && (
+        <button
+          type="button"
+          onClick={() => setShowHomeSheet((prev) => !prev)}
+          aria-label={initialUserLocation ? 'Edit home location' : 'Set home location'}
+          className={`font-mono fixed left-4 z-40 flex items-center gap-2 border-[2.5px] px-3 py-2 text-[10px] font-bold tracking-[0.2em] uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px] ${
+            initialUserLocation
+              ? 'rotate-[-2deg] border-dashed border-mustard bg-cream text-ink hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)]'
+              : 'rotate-[-2deg] border-ink bg-cream text-ink hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)]'
+          }`}
+          style={{ top: 'calc(env(safe-area-inset-top) + 78px)' }}
+        >
+          <span aria-hidden className="text-sm leading-none">
+            &#x2302;
+          </span>
+          <span>{initialUserLocation ? 'Home' : 'Set Home'}</span>
+        </button>
+      )}
+
+      {/* Home location sheet — compact panel under the button */}
+      {showHomeSheet && !plotMode && (
+        <div
+          className="fixed left-4 right-4 z-50 max-w-[400px] border-[2px] border-ink bg-cream p-4 shadow-[6px_6px_0_rgba(22,20,19,0.15)]"
+          style={{ top: 'calc(env(safe-area-inset-top) + 126px)' }}
+        >
+          <HomeLocationSetter initialLocation={initialUserLocation} />
+        </div>
+      )}
+
       {/* Preview FAB — appears below the Plot Route FAB when a route
           is computed and ready. */}
       {plotMode && plotResult && plotStatus === 'ready' && (
@@ -250,7 +302,7 @@ function MapViewInner({
           type="button"
           onClick={() => setShowPreview(true)}
           aria-label="Preview route in full detail view"
-          className="font-mono fixed right-4 z-40 flex items-center gap-2 rotate-[2deg] border-[2.5px] border-dashed border-ink bg-cream px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-ink uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
+          className="font-mono fixed right-4 z-50 flex items-center gap-2 rotate-[2deg] border-[2.5px] border-dashed border-ink bg-cream px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-ink uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
           style={{ top: 'calc(env(safe-area-inset-top) + 126px)' }}
         >
           <span aria-hidden className="text-sm leading-none">
