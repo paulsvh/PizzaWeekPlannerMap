@@ -52,6 +52,11 @@ type PlotModeSheetProps = {
   /** Called when the user drags-and-drops to reorder. */
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
+  /** Custom home leg data (null if no home location set). */
+  customLegs?: {
+    startLeg: { distanceMeters: number; durationSeconds: number } | null;
+    endLeg: { distanceMeters: number; durationSeconds: number } | null;
+  } | null;
 };
 
 /**
@@ -73,6 +78,7 @@ export function PlotModeSheet({
   isManualOrder,
   onReorder,
   onResetOrder,
+  customLegs,
 }: PlotModeSheetProps) {
   // Track whether we still have meaningful content to render so the
   // sheet doesn't flash empty during the close animation (~400ms).
@@ -126,6 +132,7 @@ export function PlotModeSheet({
               onReorder={onReorder}
               onResetOrder={onResetOrder}
               onExit={onExit}
+              customLegs={customLegs}
             />
           ) : (
             <>
@@ -155,6 +162,7 @@ type PlotContentProps = {
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
   onExit: () => void;
+  customLegs?: PlotModeSheetProps['customLegs'];
 };
 
 function PlotContent({
@@ -167,6 +175,7 @@ function PlotContent({
   onReorder,
   onResetOrder,
   onExit,
+  customLegs,
 }: PlotContentProps) {
   // If we have a result AND stops to show, render the full ready
   // content even when status is 'computing' — that way reorders
@@ -182,6 +191,7 @@ function PlotContent({
         onReorder={onReorder}
         onResetOrder={onResetOrder}
         onExit={onExit}
+        customLegs={customLegs}
       />
     );
   }
@@ -212,6 +222,7 @@ type ReadyContentProps = {
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
   onExit: () => void;
+  customLegs?: PlotModeSheetProps['customLegs'];
 };
 
 type SaveState =
@@ -227,6 +238,7 @@ function ReadyContent({
   onReorder,
   onResetOrder,
   onExit,
+  customLegs,
 }: ReadyContentProps) {
   const router = useRouter();
 
@@ -377,6 +389,34 @@ function ReadyContent({
           <Stat value={durationText.value} label={durationText.label} divider />
           <Stat value={String(stops.length)} label="Stops" divider />
         </section>
+
+        {/* Home travel addendum — shows total including personal legs */}
+        {customLegs && (customLegs.startLeg || customLegs.endLeg) && (
+          <div
+            className="animate-rise flex items-center gap-2 border-b border-dashed border-ink/30 pb-3"
+            style={{ animationDelay: '360ms' }}
+          >
+            <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
+            <span className="font-mono text-[9px] tracking-[0.15em] text-ink-soft uppercase">
+              Including travel from home:
+            </span>
+            <span className="font-mono text-[9px] font-bold tracking-[0.15em] text-ink uppercase">
+              {formatMilesShort(
+                result.totalDistanceMeters +
+                (customLegs.startLeg?.distanceMeters ?? 0) +
+                (customLegs.endLeg?.distanceMeters ?? 0),
+              )} mi
+            </span>
+            <span aria-hidden className="text-ink-faded/40">&middot;</span>
+            <span className="font-mono text-[9px] tracking-[0.15em] text-ink-soft uppercase">
+              {formatMinutesShort(
+                result.totalDurationSeconds +
+                (customLegs.startLeg?.durationSeconds ?? 0) +
+                (customLegs.endLeg?.durationSeconds ?? 0),
+              )}
+            </span>
+          </div>
+        )}
 
         {/* Ordered stops with reorder controls */}
         <section

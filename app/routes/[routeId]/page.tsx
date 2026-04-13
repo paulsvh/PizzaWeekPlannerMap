@@ -4,7 +4,9 @@ import { verifySession } from '@/lib/auth/dal';
 import { getRouteById } from '@/lib/firebase/routes';
 import { getRestaurantsByIds } from '@/lib/firebase/restaurants';
 import { getUserVote } from '@/lib/firebase/votes';
+import { getUserLocation } from '@/lib/firebase/user-locations';
 import { RouteDetailMap } from '@/components/map/RouteDetailMap';
+import { RouteDetailHomeLegs } from '@/app/routes/[routeId]/RouteDetailHomeLegs';
 import { VoteButton } from '@/app/routes/[routeId]/VoteButton';
 import { DeleteRouteForm } from '@/app/routes/[routeId]/DeleteRouteForm';
 import type { Restaurant } from '@/lib/types';
@@ -32,9 +34,10 @@ export default async function RouteDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [stops, hasUserVoted] = await Promise.all([
+  const [stops, hasUserVoted, userLocation] = await Promise.all([
     getRestaurantsByIds(route.stopRestaurantIds),
     getUserVote(session.userId, routeId),
+    getUserLocation(session.userId),
   ]);
 
   const miles = (route.totalDistanceMeters / 1609.344).toFixed(1);
@@ -258,6 +261,18 @@ export default async function RouteDetailPage({ params }: PageProps) {
             </p>
           )}
         </section>
+
+        {/* ============================================================
+            Home travel legs — personal, not part of the shared route
+            ============================================================ */}
+        {userLocation && stops.length >= 2 && (
+          <RouteDetailHomeLegs
+            mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY ?? ''}
+            userLocation={userLocation}
+            firstStop={stops[0]}
+            lastStop={stops[stops.length - 1]}
+          />
+        )}
 
         {/* ============================================================
             Vote + Delete actions

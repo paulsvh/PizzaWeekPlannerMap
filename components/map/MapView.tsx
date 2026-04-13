@@ -16,8 +16,10 @@ import { RestaurantSheet } from '@/components/sheets/RestaurantSheet';
 import { PlotModeSheet } from '@/components/sheets/PlotModeSheet';
 import { RoutePreview } from '@/components/map/RoutePreview';
 import { HomeLocationSetter } from '@/components/location/HomeLocationSetter';
+import { DashedPolyline } from '@/components/map/DashedPolyline';
 import { StarsProvider, useStars } from '@/components/context/StarsProvider';
 import { usePlotRoute } from '@/lib/maps/use-plot-route';
+import { useCustomLegs } from '@/lib/maps/use-custom-legs';
 
 type MapViewProps = {
   restaurants: Restaurant[];
@@ -136,6 +138,15 @@ function MapViewInner({
       waypoints: waypointsForRoute,
       optimize: manualOrder === null,
     });
+
+  // Custom home→first and last→home legs for plot mode.
+  const plotStops = plotResult?.orderedStops ?? [];
+  const { result: customLegs } = useCustomLegs({
+    enabled: plotMode && !!initialUserLocation,
+    homeLocation: initialUserLocation,
+    firstStop: plotStops.length > 0 ? plotStops[0] : null,
+    lastStop: plotStops.length > 0 ? plotStops[plotStops.length - 1] : null,
+  });
 
   // Exiting plot mode wipes any manual ordering the user had —
   // re-entering starts fresh with Google's optimization.
@@ -259,6 +270,14 @@ function MapViewInner({
         {plotMode && plotResult && plotResult.path.length > 0 && (
           <RoutePolyline path={plotResult.path} />
         )}
+
+        {/* Dashed personal legs — home to first stop, last stop to home */}
+        {plotMode && customLegs?.startLeg && (
+          <DashedPolyline path={customLegs.startLeg.path} />
+        )}
+        {plotMode && customLegs?.endLeg && (
+          <DashedPolyline path={customLegs.endLeg.path} />
+        )}
       </Map>
 
       <MapHeader displayName={displayName} isAdmin={isAdmin} />
@@ -328,6 +347,7 @@ function MapViewInner({
         isManualOrder={manualOrder !== null}
         onReorder={handleReorder}
         onResetOrder={handleResetOrder}
+        customLegs={customLegs}
       />
 
       {showPreview && plotResult && (
