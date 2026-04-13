@@ -314,15 +314,17 @@ function MapViewInner({
         </div>
       )}
 
-      {/* Preview FAB — appears below the Plot Route FAB when a route
-          is computed and ready. */}
+      {/* Preview FAB — mirrors the PlotModeFab style, sits on the
+          left side at the same height. Visible during plot mode when
+          a route is ready. */}
       {plotMode && plotResult && plotStatus === 'ready' && (
         <button
           type="button"
           onClick={() => setShowPreview(true)}
+          aria-pressed={false}
           aria-label="Preview route in full detail view"
-          className="font-mono fixed right-4 z-[55] flex items-center gap-2 rotate-[2deg] border-[2.5px] border-dashed border-ink bg-cream px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-ink uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
-          style={{ top: 'calc(env(safe-area-inset-top) + 126px)' }}
+          className="font-mono fixed left-4 z-40 flex items-center gap-2 rotate-[-2deg] border-[2.5px] border-dashed border-ink bg-cream px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-ink uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
+          style={{ top: 'calc(env(safe-area-inset-top) + 78px)' }}
         >
           <span aria-hidden className="text-sm leading-none">
             &#x25A3;
