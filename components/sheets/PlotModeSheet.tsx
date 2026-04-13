@@ -132,9 +132,17 @@ export function PlotModeSheet({
           aria-describedby={undefined}
           className="fixed right-0 bottom-0 left-0 z-50 flex max-h-[94vh] flex-col border-t-[3px] border-ink bg-cream shadow-[0_-24px_48px_rgba(22,20,19,0.4)] outline-none"
         >
-          {/* No drag handle — this sheet is non-dismissible, so
-              showing a grabber bar would be a misleading affordance.
-              The heavy 3px top border is the only visual anchor. */}
+          {/* Close button — red X at top-right */}
+          <button
+            type="button"
+            onClick={onExit}
+            aria-label="Close plot mode"
+            className="absolute top-3 right-4 z-10 flex size-8 items-center justify-center rounded-full border-[2px] border-sauce bg-sauce text-cream shadow-[2px_2px_0_rgba(22,20,19,0.2)] transition-colors hover:bg-sauce-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce"
+          >
+            <span aria-hidden className="text-[16px] font-bold leading-none">
+              &#x2715;
+            </span>
+          </button>
 
           {hasContent ? (
             <PlotContent
@@ -146,7 +154,6 @@ export function PlotModeSheet({
               isManualOrder={isManualOrder}
               onReorder={onReorder}
               onResetOrder={onResetOrder}
-              onExit={onExit}
               customLegs={customLegs}
               anchoredIds={anchoredIds}
               onToggleAnchor={onToggleAnchor}
@@ -164,21 +171,6 @@ export function PlotModeSheet({
           )}
         </Drawer.Content>
 
-        {/* Exit Plot FAB — rendered inside the portal so it shares
-            the same stacking context as the sheet and sits above
-            the backdrop-blur overlay. */}
-        <button
-          type="button"
-          onClick={onExit}
-          aria-label="Exit plot route mode"
-          className="font-mono fixed right-4 z-[55] flex items-center gap-2 rotate-[-3deg] border-[2.5px] border-sauce bg-sauce px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-cream uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:shadow-[5px_5px_0_rgba(124,19,8,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
-          style={{ top: 'calc(env(safe-area-inset-top) + 78px)' }}
-        >
-          <span aria-hidden className="text-sm leading-none">
-            &#x2715;
-          </span>
-          <span>Exit Plot</span>
-        </button>
       </Drawer.Portal>
     </Drawer.Root>
   );
@@ -197,7 +189,6 @@ type PlotContentProps = {
   isManualOrder: boolean;
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
-  onExit: () => void;
   customLegs?: PlotModeSheetProps['customLegs'];
   anchoredIds: Set<string>;
   onToggleAnchor: (id: string) => void;
@@ -215,7 +206,6 @@ function PlotContent({
   isManualOrder,
   onReorder,
   onResetOrder,
-  onExit,
   customLegs,
   anchoredIds,
   onToggleAnchor,
@@ -236,7 +226,6 @@ function PlotContent({
         isRecomputing={status === 'computing' || isOptimizing}
         onReorder={onReorder}
         onResetOrder={onResetOrder}
-        onExit={onExit}
         customLegs={customLegs}
         anchoredIds={anchoredIds}
         onToggleAnchor={onToggleAnchor}
@@ -256,7 +245,6 @@ function PlotContent({
       titleItalic={notice.titleItalic}
       body={notice.body}
       footnote={notice.footnote}
-      onExit={onExit}
     />
   );
 }
@@ -272,7 +260,6 @@ type ReadyContentProps = {
   isRecomputing: boolean;
   onReorder: (newOrder: Restaurant[]) => void;
   onResetOrder: () => void;
-  onExit: () => void;
   customLegs?: PlotModeSheetProps['customLegs'];
   anchoredIds: Set<string>;
   onToggleAnchor: (id: string) => void;
@@ -293,7 +280,6 @@ function ReadyContent({
   isRecomputing,
   onReorder,
   onResetOrder,
-  onExit,
   customLegs,
   anchoredIds,
   onToggleAnchor,
@@ -660,20 +646,6 @@ function ReadyContent({
             </span>
           </button>
 
-          <button
-            type="button"
-            onClick={onExit}
-            className="group font-mono flex items-center justify-between border-2 border-ink bg-cream px-5 py-4 text-sm font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:border-ink hover:bg-ink hover:text-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:text-base"
-          >
-            <span
-              aria-hidden
-              className="transition-transform group-hover:-translate-x-1"
-            >
-              &larr;
-            </span>
-            <span>Exit Plot Mode</span>
-            <span aria-hidden className="w-4" />
-          </button>
         </section>
 
         <footer className="flex items-center justify-between gap-3 border-t border-ink/30 pt-3 pb-4">
@@ -1072,8 +1044,7 @@ function NoticeContent({
   titleItalic,
   body,
   footnote,
-  onExit,
-}: NoticeCopy & { onExit: () => void }) {
+}: NoticeCopy) {
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-1 flex-col overflow-y-auto">
       <div className="flex items-center justify-between border-y border-ink/30 bg-cream-deep/50 px-5 py-1.5">
@@ -1128,21 +1099,6 @@ function NoticeContent({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onExit}
-          className="group font-mono animate-rise mt-2 flex items-center justify-between border-2 border-ink bg-cream px-5 py-4 text-sm font-bold tracking-[0.18em] text-ink uppercase transition-colors hover:border-ink hover:bg-ink hover:text-cream focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:text-base"
-          style={{ animationDelay: '600ms' }}
-        >
-          <span
-            aria-hidden
-            className="transition-transform group-hover:-translate-x-1"
-          >
-            &larr;
-          </span>
-          <span>Exit Plot Mode</span>
-          <span aria-hidden className="w-4" />
-        </button>
       </div>
     </div>
   );
