@@ -27,6 +27,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { RoutePolyline } from '@/components/map/RoutePolyline';
+import { DashedPolyline } from '@/components/map/DashedPolyline';
 import type { Restaurant } from '@/lib/types';
 import type { PlotStatus, PlotResult } from '@/lib/maps/use-plot-route';
 import { MAX_WAYPOINTS } from '@/lib/maps/use-plot-route';
@@ -54,8 +57,8 @@ type PlotModeSheetProps = {
   onResetOrder: () => void;
   /** Custom home leg data (null if no home location set). */
   customLegs?: {
-    startLeg: { distanceMeters: number; durationSeconds: number } | null;
-    endLeg: { distanceMeters: number; durationSeconds: number } | null;
+    startLeg: { distanceMeters: number; durationSeconds: number; path: google.maps.LatLngLiteral[] } | null;
+    endLeg: { distanceMeters: number; durationSeconds: number; path: google.maps.LatLngLiteral[] } | null;
   } | null;
 };
 
@@ -418,6 +421,31 @@ function ReadyContent({
           </div>
         )}
 
+        {/* Inline route map — updates live as stops are reordered */}
+        <figure
+          className={`animate-rise flex flex-col transition-opacity duration-150 ${
+            isRecomputing ? 'opacity-50' : 'opacity-100'
+          }`}
+          style={{ animationDelay: '380ms' }}
+        >
+          <div className="relative h-[200px] w-full border-[2px] border-ink bg-cream-deep">
+            <PlotRouteMap
+              path={result.path}
+              stops={stops}
+              origin={result.origin}
+              customLegs={customLegs}
+            />
+          </div>
+          <div className="flex items-center justify-between border-x-[2px] border-b-[2px] border-ink bg-cream px-3 py-1">
+            <span className="font-mono text-[8px] tracking-[0.22em] text-ink-soft uppercase">
+              &#9662; Route
+            </span>
+            <span className="font-mono text-[8px] tracking-[0.22em] text-ink-soft uppercase">
+              Bicycling
+            </span>
+          </div>
+        </figure>
+
         {/* Ordered stops with reorder controls */}
         <section
           className="animate-rise flex flex-col gap-3"
@@ -729,6 +757,79 @@ function LegDividerPlaceholder({ isReturn = false }: { isReturn?: boolean }) {
    from the route detail page, kept inline to avoid a shared util module
    for two functions.
    ========================================================================= */
+
+/* =========================================================================
+   PlotRouteMap — compact inline map that shows the route polyline +
+   numbered pins. Updates live as stops are reordered.
+   ========================================================================= */
+
+function PlotRouteMap({
+  path,
+  stops,
+  origin,
+  customLegs,
+}: {
+  path: google.maps.LatLngLiteral[];
+  stops: Restaurant[];
+  origin: google.maps.LatLngLiteral;
+  customLegs?: PlotModeSheetProps['customLegs'];
+}) {
+  const bounds = useMemo(() => {
+    const points = [origin, ...stops.map((s) => ({ lat: s.lat, lng: s.lng }))];
+    if (points.length === 0) return undefined;
+    const lats = points.map((p) => p.lat);
+    const lngs = points.map((p) => p.lng);
+    const padding = 0.008;
+    return {
+      north: Math.max(...lats) + padding,
+      south: Math.min(...lats) - padding,
+      east: Math.max(...lngs) + padding,
+      west: Math.min(...lngs) - padding,
+    };
+  }, [origin, stops]);
+
+  return (
+    <Map
+      mapId="DEMO_MAP_ID"
+      defaultBounds={bounds}
+      defaultCenter={origin}
+      defaultZoom={12}
+      gestureHandling="greedy"
+      mapTypeControl={false}
+      streetViewControl={false}
+      fullscreenControl={false}
+      zoomControl={false}
+      className="h-full w-full"
+    >
+      {path.length > 0 && <RoutePolyline path={path} />}
+
+      {/* Dashed personal legs */}
+      {customLegs?.startLeg && (
+        <DashedPolyline path={customLegs.startLeg.path} />
+      )}
+      {customLegs?.endLeg && (
+        <DashedPolyline path={customLegs.endLeg.path} />
+      )}
+
+      {/* Numbered pins */}
+      {stops.map((stop, i) => (
+        <AdvancedMarker
+          key={stop.id}
+          position={{ lat: stop.lat, lng: stop.lng }}
+          title={`${i + 1}. ${stop.name}`}
+        >
+          <div
+            role="img"
+            aria-label={`Stop ${i + 1}`}
+            className="font-mono flex size-6 items-center justify-center rounded-full border-[1.5px] border-ink bg-sauce text-[9px] font-bold text-cream shadow-[0_2px_0_rgba(22,20,19,0.5)]"
+          >
+            {String(i + 1).padStart(2, '0')}
+          </div>
+        </AdvancedMarker>
+      ))}
+    </Map>
+  );
+}
 
 function formatMilesShort(meters: number): string {
   const miles = meters / 1609.344;
