@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import type { Restaurant } from '@/lib/types';
 import { MAX_WAYPOINTS } from '@/lib/maps/constants';
+import { findDiameterPair } from '@/lib/maps/geometry';
 
 /**
  * usePlotRoute — the brain of plot mode.
@@ -12,10 +13,12 @@ import { MAX_WAYPOINTS } from '@/lib/maps/constants';
  * `travelMode: BICYCLING` and produces a polyline path + total
  * distance/duration + the stops reordered by Google's optimizer.
  *
- * LINEAR route semantics: the route starts at waypoints[0] and ends
- * at waypoints[N-1] (no loop back). When `optimize` is true, Google
- * reorders the MIDDLE stops (everything between first and last) for
- * the shortest biking route; the first and last stops stay pinned.
+ * LINEAR route semantics: the route does not loop back. When
+ * `optimize` is true, the hook picks the two geographically
+ * farthest-apart stops as origin and destination ("diameter pair"),
+ * then asks Google to reorder the middle stops for the shortest
+ * biking route. When `optimize` is false (manual order), the first
+ * and last stops in the waypoints array are used as-is.
  *
  * State machine:
  *
@@ -127,14 +130,27 @@ export function usePlotRoute({
       return;
     }
 
-    // First stop = origin, last stop = destination, everything in
-    // between = middle waypoints that Google can reorder when
-    // optimizing. Google's waypoint cap applies to that middle
-    // section only (origin and destination don't count).
-    const first = waypoints[0];
-    const last = waypoints[waypoints.length - 1];
-    const middleStops =
-      waypoints.length > 2 ? waypoints.slice(1, -1) : [];
+    // Pick endpoints. When optimizing, find the two geographically
+    // farthest-apart stops ("diameter pair") so the route runs
+    // linearly across the cluster. When the user has set a manual
+    // order, respect their first/last exactly.
+    let first: Restaurant;
+    let last: Restaurant;
+    let middleStops: Restaurant[];
+
+    if (optimize && waypoints.length >= 2) {
+      const [startIdx, endIdx] = findDiameterPair(waypoints);
+      first = waypoints[startIdx];
+      last = waypoints[endIdx];
+      middleStops = waypoints.filter(
+        (_, i) => i !== startIdx && i !== endIdx,
+      );
+    } else {
+      first = waypoints[0];
+      last = waypoints[waypoints.length - 1];
+      middleStops =
+        waypoints.length > 2 ? waypoints.slice(1, -1) : [];
+    }
 
     if (middleStops.length > MAX_WAYPOINTS) {
       setStatus('too-many');
