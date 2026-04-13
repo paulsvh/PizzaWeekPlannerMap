@@ -1,5 +1,7 @@
 'use client';
 
+import { createPortal } from 'react-dom';
+
 type PlotModeFabProps = {
   active: boolean;
   onToggle: () => void;
@@ -14,9 +16,13 @@ type PlotModeFabProps = {
  * clockwise ("Plot Route"). When active, it flips to sauce-red and
  * counter-tilts ("Exit Plot") so the state is unambiguous at a
  * glance.
+ *
+ * When active, the button renders via a portal to document.body so
+ * it's a DOM sibling of vaul's sheet portal — this ensures the FAB
+ * sits above the sheet's backdrop-blur overlay.
  */
 export function PlotModeFab({ active, onToggle }: PlotModeFabProps) {
-  return (
+  const button = (
     <button
       type="button"
       onClick={onToggle}
@@ -39,4 +45,12 @@ export function PlotModeFab({ active, onToggle }: PlotModeFabProps) {
       <span>{active ? 'Exit Plot' : 'Plot Route'}</span>
     </button>
   );
+
+  // When active, render via portal so the button is a DOM sibling of
+  // vaul's sheet portal and sits above its backdrop-blur overlay.
+  if (active) {
+    return createPortal(button, document.body);
+  }
+
+  return button;
 }
