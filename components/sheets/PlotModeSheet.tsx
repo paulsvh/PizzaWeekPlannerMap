@@ -584,16 +584,10 @@ function SortableStopCard({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
-      // touch-none prevents the browser from interpreting touch
-      // gestures as scroll/zoom while a drag is active. select-none
-      // prevents text selection during the drag.
-      // cursor-grab + active:cursor-grabbing communicates the
-      // affordance on desktop.
-      className={`group flex touch-none cursor-grab items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5 select-none active:cursor-grabbing ${
+      className={`group flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-2.5 select-none ${
         isFirst ? 'border-l-[5px] border-l-sauce' : ''
       } ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : ''}`}
-      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}. Press and drag to reorder.`}
+      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}.`}
     >
       <span
         aria-hidden
@@ -618,11 +612,14 @@ function SortableStopCard({
           ) : null}
         </p>
       </div>
-      {/* Drag-handle hint glyph on the right. The whole card is
-          draggable, but the glyph signals the affordance. */}
+      {/* Drag handle — only this element initiates a drag. The rest
+          of the card is passive so mobile users can scroll freely. */}
       <span
-        aria-hidden
-        className="font-mono flex shrink-0 items-center self-center text-[14px] leading-none text-ink-faded transition-colors group-hover:text-ink-soft"
+        {...listeners}
+        aria-label="Drag to reorder"
+        role="button"
+        tabIndex={0}
+        className="font-mono flex shrink-0 cursor-grab touch-none items-center self-center rounded px-1.5 py-2 text-[14px] leading-none text-ink-faded transition-colors hover:bg-cream-deep hover:text-ink-soft active:cursor-grabbing"
       >
         &#x2630;
       </span>

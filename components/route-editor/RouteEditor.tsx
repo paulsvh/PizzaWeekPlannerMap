@@ -722,12 +722,22 @@ function SortableStopCard({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
-      className={`group flex touch-none cursor-grab items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-3 select-none active:cursor-grabbing sm:px-4 ${
+      className={`group flex items-stretch gap-3 border-[1.5px] border-ink bg-cream px-3 py-3 select-none sm:px-4 ${
         isFirst ? 'border-l-[5px] border-l-sauce' : ''
       } ${isDragging ? 'shadow-[0_8px_24px_rgba(22,20,19,0.25)]' : 'shadow-[3px_3px_0_rgba(22,20,19,0.08)]'}`}
-      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}. Press and drag to reorder.`}
+      aria-label={`${stop.pizzaName} at ${stop.name}, position ${index + 1} of ${totalStops}.`}
     >
+      {/* Drag handle — only this element initiates a drag. The rest
+          of the card is passive so mobile users can scroll freely. */}
+      <span
+        {...listeners}
+        aria-label="Drag to reorder"
+        role="button"
+        tabIndex={0}
+        className="font-mono flex shrink-0 cursor-grab touch-none items-center self-center rounded px-1 py-2 text-[14px] leading-none text-ink-faded transition-colors hover:bg-cream-deep hover:text-ink-soft active:cursor-grabbing"
+      >
+        &#x2630;
+      </span>
       <span
         aria-hidden
         className="font-mono flex shrink-0 items-start bg-ink px-2 py-1 text-[11px] font-bold tracking-[0.1em] text-cream"
@@ -751,8 +761,7 @@ function SortableStopCard({
           ) : null}
         </p>
       </div>
-      {/* Remove button — stopPropagation on pointerdown prevents
-          dnd-kit from eating the tap as a drag-start. */}
+      {/* Remove button */}
       <button
         type="button"
         onClick={(e) => {
