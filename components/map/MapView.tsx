@@ -14,7 +14,6 @@ import { PlotModeFab } from '@/components/map/PlotModeFab';
 import { RoutePolyline } from '@/components/map/RoutePolyline';
 import { RestaurantSheet } from '@/components/sheets/RestaurantSheet';
 import { PlotModeSheet } from '@/components/sheets/PlotModeSheet';
-import { RoutePreview } from '@/components/map/RoutePreview';
 import { HomeLocationSetter } from '@/components/location/HomeLocationSetter';
 import { DashedPolyline } from '@/components/map/DashedPolyline';
 import { StarsProvider, useStars } from '@/components/context/StarsProvider';
@@ -104,7 +103,6 @@ function MapViewInner({
 }: MapViewInnerProps) {
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [plotMode, setPlotMode] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const [showHomeSheet, setShowHomeSheet] = useState(false);
   /**
    * User's custom stop order. Null means "use Google's optimization
@@ -153,7 +151,6 @@ function MapViewInner({
   useEffect(() => {
     if (!plotMode) {
       setManualOrder(null);
-      setShowPreview(false);
     }
   }, [plotMode]);
 
@@ -314,25 +311,6 @@ function MapViewInner({
         </div>
       )}
 
-      {/* Preview FAB — mirrors the PlotModeFab style, sits on the
-          left side at the same height. Visible during plot mode when
-          a route is ready. */}
-      {plotMode && plotResult && plotStatus === 'ready' && (
-        <button
-          type="button"
-          onClick={() => setShowPreview(true)}
-          aria-pressed={false}
-          aria-label="Preview route in full detail view"
-          className="font-mono fixed left-4 z-40 flex items-center gap-2 rotate-[-2deg] border-[2.5px] border-dashed border-ink bg-cream px-3 py-2 text-[10px] font-bold tracking-[0.2em] text-ink uppercase shadow-[3px_3px_0_rgba(22,20,19,0.3)] transition-all duration-150 hover:bg-mustard hover:shadow-[5px_5px_0_rgba(22,20,19,0.4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauce sm:px-4 sm:py-2.5 sm:text-[11px]"
-          style={{ top: 'calc(env(safe-area-inset-top) + 78px)' }}
-        >
-          <span aria-hidden className="text-sm leading-none">
-            &#x25A3;
-          </span>
-          <span>Preview</span>
-        </button>
-      )}
-
       <RestaurantSheet
         restaurant={selected}
         onClose={() => setSelected(null)}
@@ -352,14 +330,6 @@ function MapViewInner({
         customLegs={customLegs}
       />
 
-      {showPreview && plotResult && (
-        <RoutePreview
-          result={plotResult}
-          stops={plotResult.orderedStops}
-          displayName={displayName}
-          onClose={() => setShowPreview(false)}
-        />
-      )}
     </div>
   );
 }
