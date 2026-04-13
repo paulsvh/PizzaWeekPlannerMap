@@ -127,7 +127,7 @@ export function PlotModeSheet({
       dismissible={false}
     >
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/45 backdrop-blur-[2px]" />
+        <Drawer.Overlay className="pointer-events-none fixed inset-0 z-40 bg-ink/45 backdrop-blur-[2px]" />
         <Drawer.Content
           aria-describedby={undefined}
           className="fixed right-0 bottom-0 left-0 z-50 flex max-h-[94vh] flex-col border-t-[3px] border-ink bg-cream shadow-[0_-24px_48px_rgba(22,20,19,0.4)] outline-none"
