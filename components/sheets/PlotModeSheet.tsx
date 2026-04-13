@@ -537,7 +537,7 @@ function ReadyContent({
               strategy={verticalListSortingStrategy}
             >
               <ol className="flex flex-col gap-1">
-                {/* Home start card */}
+                {/* Home start card + leg to first stop */}
                 {userLocation && (
                   <li className="flex items-center gap-3 border-[1.5px] border-dashed border-ink/40 bg-cream-deep/20 px-3 py-2">
                     <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
@@ -546,6 +546,12 @@ function ReadyContent({
                       <p className="font-mono mt-0.5 truncate text-[9px] tracking-[0.12em] text-ink-faded">{userLocation.formattedAddress}</p>
                     </div>
                   </li>
+                )}
+                {userLocation && customLegs?.startLeg && (
+                  <LegDivider
+                    meters={customLegs.startLeg.distanceMeters}
+                    seconds={customLegs.startLeg.durationSeconds}
+                  />
                 )}
                 {stops.map((stop, i) => {
                   const showLegBefore = i > 0;
@@ -574,7 +580,13 @@ function ReadyContent({
                     </Fragment>
                   );
                 })}
-                {/* Home end card */}
+                {/* Leg from last stop to home + Home end card */}
+                {userLocation && customLegs?.endLeg && (
+                  <LegDivider
+                    meters={customLegs.endLeg.distanceMeters}
+                    seconds={customLegs.endLeg.durationSeconds}
+                  />
+                )}
                 {userLocation && (
                   <li className="flex items-center gap-3 border-[1.5px] border-dashed border-ink/40 bg-cream-deep/20 px-3 py-2">
                     <span aria-hidden className="text-mustard text-sm">&#x2302;</span>
